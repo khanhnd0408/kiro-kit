@@ -10,11 +10,12 @@
 #   --reference-source PATH   a clone of https://github.com/asgeirtj/system_prompts_leaks.
 #                             Default: $SYSTEM_PROMPTS_LEAKS, then ../system_prompts_leaks next to this
 #                             repository, then ~/Projects/system_prompts_leaks.
-#   --force                   overwrite kit files that already exist in the project.
+#   --force                   also replace docs/agent-review-method/inputs.md (normally kept).
 #
 # What it does:
 #   1. Copies docs/agent-review-method/ and tools/agent_review/ into the project, plus the files for
-#      the chosen surface. Existing files are skipped unless --force is given.
+#      the chosen surface. Kit files that differ from this version are updated, and the old copies
+#      are saved under ~/.kiro-agent-review/backups/. Your inputs.md is kept unless --force is given.
 #   2. Copies the files in reference-files.txt into REFERENCE_ROOT, outside the project
 #      (default ~/.kiro-agent-review/reference; override with AGENT_REVIEW_REFERENCE=...). When the
 #      pinned commit the catalog was checked against exists in the clone, it copies from that commit,
@@ -78,14 +79,23 @@ REF_ROOT="${AGENT_REVIEW_REFERENCE:-$AR_HOME/reference}"
 mkdir -p "$REF_ROOT"
 REF_ROOT="$(cd "$REF_ROOT" && pwd)"
 
-copied=0; skipped=0
+USER_FILES="docs/agent-review-method/inputs.md"
+BACKUP_DIR="$AR_HOME/backups/$(date +%Y%m%d-%H%M%S)-$(basename "$TARGET")"
+copied=0; updated=0; unchanged=0; kept=0
 copy_tree() {
   local src_root="$1" src rel dst
   while IFS= read -r -d '' src; do
     rel="${src#"$src_root/"}"
     dst="$TARGET/$rel"
-    if [ -e "$dst" ] && [ "$FORCE" -ne 1 ]; then
-      echo "  skip (exists): $rel"; skipped=$((skipped + 1)); continue
+    if [ -e "$dst" ]; then
+      if cmp -s "$src" "$dst"; then unchanged=$((unchanged + 1)); continue; fi
+      if [ "$rel" = "$USER_FILES" ] && [ "$FORCE" -ne 1 ]; then
+        echo "  kept (your copy): $rel"; kept=$((kept + 1)); continue
+      fi
+      mkdir -p "$BACKUP_DIR/$(dirname "$rel")"
+      cp "$dst" "$BACKUP_DIR/$rel"
+      cp "$src" "$dst"
+      echo "  updated: $rel"; updated=$((updated + 1)); continue
     fi
     mkdir -p "$(dirname "$dst")"
     cp "$src" "$dst"
@@ -96,7 +106,20 @@ copy_tree() {
 echo "== Project files ($SURFACE) -> $TARGET"
 copy_tree "$KIT_DIR/project"
 copy_tree "$KIT_DIR/adapters/$SURFACE/project"
-echo "  $copied copied, $skipped skipped"
+echo "  $copied new, $updated updated, $unchanged unchanged, $kept kept"
+if [ "$updated" -gt 0 ]; then echo "  old copies of updated files: $BACKUP_DIR"; fi
+
+OTHER="ide"; [ "$SURFACE" = "ide" ] && OTHER="crew"
+leftovers=""
+while IFS= read -r -d '' src; do
+  rel="${src#"$KIT_DIR/adapters/$OTHER/project/"}"
+  if [ -e "$TARGET/$rel" ] && [ ! -e "$KIT_DIR/adapters/$SURFACE/project/$rel" ]; then leftovers="$leftovers $rel"; fi
+done < <(find "$KIT_DIR/adapters/$OTHER/project" -type f -print0 | sort -z)
+if [ -n "$leftovers" ]; then
+  echo "  note: files from an earlier $OTHER install are still here and aren't used by $SURFACE:"
+  for rel in $leftovers; do echo "    $rel"; done
+  echo "  Delete them if you don't use $OTHER on this project."
+fi
 
 echo "== Reference files -> $REF_ROOT"
 from_pin=0
@@ -148,11 +171,20 @@ if [ "$SURFACE" = "crew" ]; then
 fi
 
 echo "== Checks"
-(cd "$TARGET" && python3 -I tools/agent_review/check_citations.py --self-test)
-(cd "$TARGET" && python3 -I tools/agent_review/guard.py --self-test)
-(cd "$TARGET" && python3 -I tools/agent_review/check_citations.py --catalog)
+check_failed() {
+  echo "" >&2
+  echo "A check failed: $1" >&2
+  echo "The lines above say which part. Things to try:" >&2
+  echo "  - Rerun this installer from the latest kit (git pull first). It updates outdated kit files in the project." >&2
+  echo "  - Check that python3 is 3.7 or newer: python3 --version" >&2
+  echo "  - If it still fails, open an issue with the full output of this installer." >&2
+  exit 1
+}
+(cd "$TARGET" && python3 -I tools/agent_review/check_citations.py --self-test) || check_failed "citation checker self-test"
+(cd "$TARGET" && python3 -I tools/agent_review/guard.py --self-test) || check_failed "guard self-test"
+(cd "$TARGET" && python3 -I tools/agent_review/check_citations.py --catalog) || check_failed "catalog citations against REFERENCE_ROOT"
 if [ "$SURFACE" = "crew" ]; then
-  python3 -I "$AR_HOME/bin/crew_hooks.py" self-test --project "$TARGET"
+  python3 -I "$AR_HOME/bin/crew_hooks.py" self-test --project "$TARGET" || check_failed "Crew hook self-test"
 fi
 
 if [ "$SURFACE" = "crew" ]; then

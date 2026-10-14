@@ -154,9 +154,12 @@ def cmd_stop(payload):
     checker = os.path.join(root, CHECKER) if root else ""
     if not root or not os.path.isfile(checker):
         return 0
+    command = [sys.executable, "-I", checker, "--root", root]
     try:
-        proc = subprocess.run([sys.executable, "-I", checker, "--root", root, "--recent", str(RECENT_MINUTES)],
-                              capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(command + ["--recent", str(RECENT_MINUTES)], capture_output=True, text=True, timeout=60)
+        if proc.returncode == 2 and "--recent" in proc.stderr:
+            # An older checker without --recent: check every deliverable instead.
+            proc = subprocess.run(command, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return 0
     state_path = os.path.join(home(), "state", "stop.json")
@@ -232,6 +235,15 @@ def self_test(project):
     if not project or not os.path.isfile(os.path.join(project, MARKER)):
         print("self-test needs --project PATH pointing at a project with the kit installed", file=sys.stderr)
         return 2
+    try:
+        usage = subprocess.run([sys.executable, "-I", os.path.join(project, CHECKER), "--help"],
+                               capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        usage = ""
+    if "--recent" not in usage:
+        print("warning: the project's tools/agent_review/check_citations.py is from an older kit. The stop hook "
+              "will check every deliverable instead of recent ones. Rerun the latest install.sh to update it.",
+              file=sys.stderr)
     failures = []
     me = os.path.abspath(__file__)
     with tempfile.TemporaryDirectory() as tmp:
