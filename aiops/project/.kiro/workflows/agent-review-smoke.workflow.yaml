@@ -1,0 +1,22 @@
+# One-step setup check for the agent-review workflow.
+# It confirms that the step agent can read the project and REFERENCE_ROOT, run the citation checker,
+# and write under docs/agent-review/. If the step reports missing tools, switch the agent to wf-planner
+# in both recipes (see the kit README) and run this again.
+name: agent-review-smoke
+description: Setup check for the agent-review workflow. Writes docs/agent-review/_smoke.md.
+steps:
+  - type: step
+    id: smoke
+    agent: agent-reviewer
+    artifacts:
+      smoke: docs/agent-review/_smoke.md
+    prompt: |
+      This is a setup check for the agent-review workflow. Do exactly these steps and record each result.
+      1. Read docs/agent-review-method/inputs.md and note the REFERENCE_ROOT value.
+      2. List the folder <REFERENCE_ROOT>/OpenAI/Codex.
+      3. Read lines 41 to 49 of <REFERENCE_ROOT>/OpenAI/Codex/plan_mode.md.
+      4. Run: python3 -I tools/agent_review/check_citations.py --self-test
+      5. Run: python3 -I tools/agent_review/check_citations.py --catalog
+      6. Write docs/agent-review/_smoke.md with: the names of the tools you have, and PASS or FAIL with one line of detail for steps 1 to 5.
+      If you can't do a step, write FAIL for it and continue. Do not change any other file.
+      Finish with send_message: severity success if every step passed, otherwise severity warning with the failed steps.

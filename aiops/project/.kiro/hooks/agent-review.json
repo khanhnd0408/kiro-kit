@@ -1,0 +1,28 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "agent-review-guard",
+      "description": "While docs/agent-review/.review-mode exists, block writes outside docs/agent-review/, network and state-changing shell commands, and MCP or web tools. Delete the flag file to turn it off (Phase 6).",
+      "trigger": "PreToolUse",
+      "action": {
+        "type": "command",
+        "command": "python3 -I tools/agent_review/guard.py"
+      },
+      "timeout": 10,
+      "enabled": true
+    },
+    {
+      "name": "agent-review-citation-check",
+      "description": "After the agent saves a deliverable under docs/agent-review/, check that its file:line citations point at real lines and that findings have their required fields.",
+      "trigger": "PostFileSave",
+      "matcher": ".*docs/agent-review/.*\\.md$",
+      "action": {
+        "type": "command",
+        "command": "python3 -I tools/agent_review/check_citations.py --changed \"{{filePath}}\""
+      },
+      "timeout": 30,
+      "enabled": true
+    }
+  ]
+}

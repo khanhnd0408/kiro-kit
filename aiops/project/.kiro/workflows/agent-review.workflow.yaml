@@ -1,0 +1,171 @@
+# Agent review, Phases 2-5, as a Kiro workflow.
+# Run it only after Phase 1 is done and confirmed in chat (docs/agent-review/01-system-map.md exists).
+# Each step runs in its own session and gets earlier results only through the files named in its prompt.
+# Steps use the custom agent `agent-reviewer`. If the smoke test shows that agent has no tools
+# (Kiro issue #11150), replace every `agent: agent-reviewer` with `agent: wf-planner`.
+# Steps inherit the model from the chat you launch the workflow from; pick Claude Opus 5.5 there.
+name: agent-review
+description: >-
+  Phases 2-5 of the observability agent review: pattern catalog, component reviews in parallel,
+  independent verification, comparison and prompt audit, eval plan, recommendations and drafts.
+  Run after Phase 1 is confirmed.
+inputs:
+  notes: prompt
+steps:
+  - type: step
+    id: catalog
+    agent: agent-reviewer
+    artifacts:
+      catalog: docs/agent-review/02-pattern-catalog.md
+    prompt: |
+      You are the "catalog" step of the agent-review workflow, in workflow mode.
+      First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md and docs/agent-review/01-system-map.md.
+      Then run Phase 2 from docs/agent-review-method/phase-2-catalog.md, steps 2.1 to 2.6.
+      Write docs/agent-review/02-pattern-catalog.md, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/02-pattern-catalog.md and fix every problem.
+      Extra notes from the user (may be empty): {{notes}}
+      Finish with send_message, severity success, and a summary of at most 8 lines.
+
+  - type: parallel
+    id: specialist-reviews
+    joinPolicy: allSettled
+    branches:
+      - type: step
+        id: review-logs
+        agent: agent-reviewer
+        artifacts:
+          logs: docs/agent-review/scorecards/logs.md
+        prompt: |
+          You are the "review-logs" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the logs component only. Use the LOGS checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/logs.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/logs.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+      - type: step
+        id: review-trace
+        agent: agent-reviewer
+        artifacts:
+          trace: docs/agent-review/scorecards/trace.md
+        prompt: |
+          You are the "review-trace" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the trace component only. Use the TRACE checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/trace.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/trace.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+      - type: step
+        id: review-metrics
+        agent: agent-reviewer
+        artifacts:
+          metrics: docs/agent-review/scorecards/metrics.md
+        prompt: |
+          You are the "review-metrics" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the metrics component only. Use the MET checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/metrics.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/metrics.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+      - type: step
+        id: review-code
+        agent: agent-reviewer
+        artifacts:
+          code: docs/agent-review/scorecards/code.md
+        prompt: |
+          You are the "review-code" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the code component only (the GitLab agent). Use the CODE checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/code.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/code.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+      - type: step
+        id: review-kb
+        agent: agent-reviewer
+        artifacts:
+          kb: docs/agent-review/scorecards/kb.md
+        prompt: |
+          You are the "review-kb" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the KB component only. Use the KB checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/kb.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/kb.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+      - type: step
+        id: review-graph
+        agent: agent-reviewer
+        artifacts:
+          graph: docs/agent-review/scorecards/graph.md
+        prompt: |
+          You are the "review-graph" step of the agent-review workflow, in workflow mode.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/02-pattern-catalog.md.
+          Run Phase 3 step 3.3 from docs/agent-review-method/phase-3-review.md (the LangGraph implementation). Use the LG checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md, Templates T3 and T8 in D-templates.md, and E1 in E-examples.md.
+          Write docs/agent-review/scorecards/graph.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/graph.md and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines.
+
+  - type: step
+    id: review-orchestrator
+    agent: agent-reviewer
+    artifacts:
+      orchestrator: docs/agent-review/scorecards/orchestrator.md
+    prompt: |
+      You are the "review-orchestrator" step of the agent-review workflow, in workflow mode.
+      First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md, docs/agent-review/02-pattern-catalog.md, and every file in docs/agent-review/scorecards/.
+      Run Phase 3 step 3.2 from docs/agent-review-method/phase-3-review.md for the orchestrator component. Use the ORCH checklist in B-domain-checklist.md, the rubric in C-scoring-rubric.md (score D15 and D16 for the whole system here), Templates T3 and T8, and E1. Note any place where the orchestrator relies on something a specialist scorecard says is missing.
+      Write docs/agent-review/scorecards/orchestrator.md and nothing else, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/orchestrator.md and fix every problem.
+      Finish with send_message, severity success, and a summary of at most 8 lines.
+
+  - type: repeat
+    id: verification
+    maxIterations: 2
+    onMaxIterations: continue
+    stopCondition:
+      fileCheck:
+        path: docs/agent-review/verification.json
+        jsonPath: "$.remaining_unverified"
+        value: 0
+    steps:
+      - type: step
+        id: verify
+        agent: agent-reviewer
+        artifacts:
+          verification: docs/agent-review/verification.md
+        prompt: |
+          You are the "verify" step of the agent-review workflow, in workflow mode. You did not write the findings you are about to check. Your job is to try to refute them, not to defend them.
+          First read docs/agent-review-method/00-rules.md (section 3 applies to you) and docs/agent-review-method/inputs.md. If docs/agent-review/verification.md already exists, continue from it and check only what is still unverified.
+          Run Phase 3 step 3.6 from docs/agent-review-method/phase-3-review.md over docs/agent-review/scorecards/*.md. You may edit the scorecard files only to update Verdict lines and to move refuted findings into their "Refuted during verification" section.
+          Write docs/agent-review/verification.md and docs/agent-review/verification.json (Template T9 in D-templates.md), then run: python3 -I tools/agent_review/check_citations.py and fix every problem.
+          Finish with send_message, severity success, and a summary of at most 8 lines with the counts of confirmed, plausible and refuted findings.
+
+  - type: step
+    id: compare-and-audit
+    agent: agent-reviewer
+    artifacts:
+      comparison: docs/agent-review/03-comparison.md
+      audit: docs/agent-review/05-prompt-audit.md
+      index: docs/agent-review/04-agent-scorecards.md
+    prompt: |
+      You are the "compare-and-audit" step of the agent-review workflow, in workflow mode.
+      First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md, docs/agent-review/02-pattern-catalog.md, docs/agent-review/verification.md and the files in docs/agent-review/scorecards/.
+      Run Phase 3 steps 3.4, 3.5 and 3.7 from docs/agent-review-method/phase-3-review.md.
+      Write docs/agent-review/03-comparison.md, docs/agent-review/05-prompt-audit.md and docs/agent-review/04-agent-scorecards.md, then run: python3 -I tools/agent_review/check_citations.py and fix every problem.
+      Finish with send_message, severity success, and a summary of at most 8 lines.
+
+  - type: step
+    id: eval-plan
+    agent: agent-reviewer
+    artifacts:
+      eval_plan: docs/agent-review/06-eval-plan.md
+    prompt: |
+      You are the "eval-plan" step of the agent-review workflow, in workflow mode.
+      First read docs/agent-review-method/00-rules.md (section 3 applies to you), docs/agent-review-method/inputs.md, docs/agent-review/01-system-map.md and docs/agent-review/04-agent-scorecards.md.
+      Run Phase 4 from docs/agent-review-method/phase-4-eval.md, steps 4.1 to 4.11.
+      Write docs/agent-review/06-eval-plan.md, then run: python3 -I tools/agent_review/check_citations.py --only docs/agent-review/06-eval-plan.md and fix every problem.
+      If PAST_INCIDENTS or STAGING_FOR_FAULTS in inputs.md is unknown, still write the plan, and list exactly what you need from the user.
+      Finish with send_message, severity success, and a summary of at most 8 lines.
+
+  - type: step
+    id: recommend
+    agent: agent-reviewer
+    artifacts:
+      recommendations: docs/agent-review/07-recommendations.md
+      summary: docs/agent-review/00-summary.md
+    prompt: |
+      You are the "recommend" step of the agent-review workflow, in workflow mode.
+      First read docs/agent-review-method/00-rules.md (section 3 applies to you) and docs/agent-review-method/inputs.md. Then read docs/agent-review/01-system-map.md, 03-comparison.md, 04-agent-scorecards.md, 05-prompt-audit.md, 06-eval-plan.md, verification.md and the files in docs/agent-review/scorecards/.
+      Run Phase 5 from docs/agent-review-method/phase-5-recommend.md, steps 5.1 to 5.6.
+      Write docs/agent-review/07-recommendations.md, the drafts in docs/agent-review/08-drafts/ and docs/agent-review/00-summary.md, then run: python3 -I tools/agent_review/check_citations.py and fix every problem.
+      Finish with send_message, severity success. List the top five recommendations, and tell the user to read docs/agent-review/00-summary.md and choose the items for Phase 6 in chat.

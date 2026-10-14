@@ -1,0 +1,37 @@
+# Files that install.sh copies into REFERENCE_ROOT.
+# Paths are relative to the system_prompts_leaks repository root and are kept as-is,
+# so citations like `OpenAI/Codex/codex-full.md:1283` resolve under REFERENCE_ROOT.
+OpenAI/Codex/codex-full.md
+OpenAI/Codex/gpt-6.1-sol.md
+OpenAI/Codex/gpt-6.1-sol-chatgpt-work-local.md
+OpenAI/Codex/gpt-5.5.md
+OpenAI/Codex/plan_mode.md
+OpenAI/Codex/control-chrome.md
+OpenAI/Codex/computer-use.md
+OpenAI/Codex/personality_pragmatic.md
+OpenAI/chatgpt-gpt-5-agent-mode.md
+Anthropic/claude-in-chrome.md
+Anthropic/claude-code/claude-code-opus-5.5.md
+Anthropic/claude-code/claude-code-headless-fable-5.1.md
+Anthropic/claude-code/agents/Explore.md
+Anthropic/claude-code/agents/general-purpose.md
+Anthropic/claude-code/agents/Plan.md
+Anthropic/claude-code/skills/code-review/SKILL.md
+Anthropic/claude-code/skills/code-review/max.md
+Anthropic/claude-code/skills/security-review/SKILL.md
+Anthropic/claude-code/skills/verify/SKILL.md
+Anthropic/claude-code/skills/anthropic-skills/deep-research/SKILL.md
+Anthropic/claude-code/skills/anthropic-skills/deep-research/references/researcher.md
+Anthropic/claude-code/skills/anthropic-skills/deep-research/references/report-writer.md
+Anthropic/claude-code/skills/deep-research/scripts/workflow-script.js
+Anthropic/claude-code/skills/workflow-authoring/SKILL.md
+Anthropic/claude-code/skills/import-memory/SKILL.md
+Anthropic/claude-code/skills/skill-creator/agents/grader.md
+Anthropic/claude-code/skills/claude-api/shared/agent-design.md
+Anthropic/claude-code/skills/claude-api/shared/prompt-audit.md
+Anthropic/claude-code/skills/claude-api/shared/tool-use-concepts.md
+Anthropic/claude-code/skills/claude-api/shared/managed-agents-multiagent.md
+Anthropic/claude-code/skills/claude-api/shared/model-migration.md
+Anthropic/claude-code/skills/claude-api/shared/evals/build-eval.md
+Anthropic/claude-code/skills/claude-api/shared/evals/eval-audit.md
+Anthropic/claude-code/skills/claude-api/shared/evals/eval-hillclimb.md
