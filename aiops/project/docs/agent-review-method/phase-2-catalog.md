@@ -49,4 +49,4 @@ Add up to 10 patterns you found in step 2.3 that the catalog lacks, as P72 onwar
 
 - Use Template T2.
 - Run `python3 -I tools/agent_review/check_citations.py --only docs/agent-review/02-pattern-catalog.md` and fix every problem.
-- In manual mode, update `_progress.md`.
+- In chat mode, update `_progress.md`.

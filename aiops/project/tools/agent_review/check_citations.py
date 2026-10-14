@@ -10,7 +10,8 @@ touches the network.
 Usage (run from the project root):
   python3 -I tools/agent_review/check_citations.py              # all deliverables
   python3 -I tools/agent_review/check_citations.py --only FILE  # one file
-  python3 -I tools/agent_review/check_citations.py --changed FILE   # hook mode
+  python3 -I tools/agent_review/check_citations.py --changed FILE   # IDE hook mode
+  python3 -I tools/agent_review/check_citations.py --recent 90  # changed in the last 90 minutes
   python3 -I tools/agent_review/check_citations.py --catalog    # method vs REFERENCE_ROOT
   python3 -I tools/agent_review/check_citations.py --self-test
 
@@ -26,6 +27,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 
 DELIVERABLE_DIR = os.path.join("docs", "agent-review")
 METHOD_DIR = os.path.join("docs", "agent-review-method")
@@ -276,6 +278,7 @@ def main(argv):
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--only", metavar="FILE", help="check one file")
     group.add_argument("--changed", metavar="FILE", help="hook mode: check FILE if it is a deliverable")
+    group.add_argument("--recent", metavar="MINUTES", type=float, help="check deliverables changed in the last MINUTES")
     group.add_argument("--catalog", action="store_true", help="check the method's reference citations")
     group.add_argument("--self-test", action="store_true", help="run a built-in test")
     args = parser.parse_args(argv)
@@ -311,6 +314,12 @@ def main(argv):
             print(f"file not found: {args.only}", file=sys.stderr)
             return 2
         files = [path]
+    elif args.recent is not None:
+        cutoff = time.time() - args.recent * 60
+        files = [path for path in deliverables(root) if os.path.getmtime(path) >= cutoff]
+        if not files:
+            print(f"agent-review citation check: no deliverables changed in the last {args.recent:g} minutes")
+            return 0
     else:
         files = deliverables(root)
 

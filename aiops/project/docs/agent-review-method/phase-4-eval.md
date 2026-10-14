@@ -73,4 +73,4 @@ Run the same cases with the KB on and off (P70), and say which metrics should mo
 ## 4.11 Write `06-eval-plan.md`
 
 - Run the checker on it and fix every problem.
-- In manual mode, update `_progress.md`.
+- In chat mode, update `_progress.md`.

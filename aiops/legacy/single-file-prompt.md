@@ -33,12 +33,12 @@ The procedure is strict, but the judgment calls are explained rather than script
 1. Give Kiro access to the reference repo, either as a second workspace folder or as a git-ignored symlink:
    ```bash
    cd <your-observability-project>
-   mkdir -p .reference && ln -s /home/ndk/Projects/system_prompts_leaks .reference/system_prompts_leaks
+   mkdir -p .reference && ln -s /path/to/system_prompts_leaks .reference/system_prompts_leaks
    echo ".reference/" >> .gitignore
    ```
 2. Copy this file into your project:
    ```bash
-   mkdir -p docs && cp /home/ndk/Projects/system_prompts_leaks/kiro-observability-agent-review-prompt.md docs/agent-review-prompt.md
+   mkdir -p docs && cp /path/to/system_prompts_leaks/kiro-observability-agent-review-prompt.md docs/agent-review-prompt.md
    ```
 3. Fill in the Inputs block in Part 2, section 2. Anything left blank gets discovered from your code.
 4. In Kiro, start a normal chat (not a Spec session), choose Claude Opus 5.5, and turn Autopilot off so you approve each command and file change.
@@ -179,7 +179,7 @@ Codex and Claude Code are coding agents; my system reads telemetry and code to i
 
 ```text
 MY_PROJECT_ROOT:     <default: the open Kiro workspace>
-REFERENCE_REPO:      /home/ndk/Projects/system_prompts_leaks   (or .reference/system_prompts_leaks)
+REFERENCE_REPO:      /path/to/system_prompts_leaks   (or .reference/system_prompts_leaks)
 DELIVERABLE_DIR:     docs/agent-review/
 REPORT_LANGUAGE:     English, plain and short sentences
 PROJECT_LANGUAGE:    <Python | TypeScript | detect>

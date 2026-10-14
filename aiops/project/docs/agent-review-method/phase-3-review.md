@@ -16,7 +16,7 @@ The components are `logs`, `trace`, `metrics`, `code`, `kb` and `orchestrator`. 
 
 ## 3.1 Prepare
 
-- Re-read `01-system-map.md` and the "In this project" lines in `02-pattern-catalog.md`. In manual mode, re-read `_progress.md` too.
+- Re-read `01-system-map.md` and the "In this project" lines in `02-pattern-catalog.md`. In chat mode, re-read `_progress.md` too.
 - Review in this order: logs, trace, metrics, code, kb, orchestrator. The specialists come first because the orchestrator can only be as good as what they return. In workflow mode, the specialists run in parallel and the orchestrator runs after them.
 
 ## 3.2 Review one component at a time
@@ -29,7 +29,7 @@ For each component:
 4. Write findings for the biggest gaps (usually three to eight) with Template T3. Build each failure scenario with 00-rules.md section 4.6, and match the level of detail in E1 of `E-examples.md`.
 5. Write `docs/agent-review/scorecards/<component>.md` with Template T8.
 6. Run `python3 -I tools/agent_review/check_citations.py --only docs/agent-review/scorecards/<component>.md` and fix every problem.
-7. In manual mode, tick the component in `_progress.md` before you start the next one, so a context reset loses at most one component.
+7. In chat mode, tick the component in `_progress.md` before you start the next one, so a context reset loses at most one component.
 
 For the orchestrator, also read the specialist scorecards. Note any place where the orchestrator relies on something a specialist doesn't provide.
 
@@ -70,4 +70,4 @@ Act as an independent verifier. Your job is to try to refute each finding, not t
 
 - Write `docs/agent-review/04-agent-scorecards.md` with Template T10: a score table across components, finding counts by severity, and links to each scorecard file.
 - Run the checker on all deliverables: `python3 -I tools/agent_review/check_citations.py`.
-- In manual mode, update `_progress.md`.
+- In chat mode, update `_progress.md`.

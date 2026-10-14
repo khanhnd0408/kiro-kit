@@ -7,10 +7,10 @@ Deliverable: `docs/agent-review/01-system-map.md` (Template T1 in `D-templates.m
 ## 1.1 Set up
 
 - Read `docs/agent-review-method/inputs.md`.
-- In manual mode, create `docs/agent-review/_progress.md` from Template T0, with every step ID of Phases 1 to 5 as an unchecked box.
+- In chat mode, create `docs/agent-review/_progress.md` from Template T0, with every step ID of Phases 1 to 5 as an unchecked box.
 - Check REFERENCE_ROOT by listing `<REFERENCE_ROOT>/OpenAI/Codex` and `<REFERENCE_ROOT>/Anthropic/claude-code`. If either is missing or unreadable, stop and tell me.
 - Run `python3 -I tools/agent_review/check_citations.py --self-test`. It should print `self-test ok`. If it doesn't, tell me.
-- Done when REFERENCE_ROOT is readable, the self-test passes, and (in manual mode) the progress file exists.
+- Done when REFERENCE_ROOT is readable, the self-test passes, and (in chat mode) the progress file exists.
 
 ## 1.2 Get the project overview
 

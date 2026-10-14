@@ -58,5 +58,6 @@ Fix whatever fails. Then run the checker on the drafts folder files you wrote.
 
 ## 5.7 Stop
 
-- In manual mode, send the end-of-session report and ask which recommendations to implement.
-- In workflow mode, finish with `send_message` (success), listing the top five recommendations and pointing me to `00-summary.md`.
+- In chat mode, send the end-of-session report and ask which recommendations to implement.
+- In Task Runner mode, finish with a summary that lists the top five recommendations and points me to `00-summary.md`.
+- In workflow-step mode, do the same with `send_message` (success).

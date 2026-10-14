@@ -11,4 +11,4 @@ Project inputs:
 
 #[[file:docs/agent-review-method/inputs.md]]
 
-This is manual mode. Do exactly the phase or steps named in my message. Read the phase file and the appendices it points to when you need them; they are in `docs/agent-review-method/`.
+This is chat mode. Do exactly the phase or steps named in my message. Read the phase file and the appendices it points to when you need them; they are in `docs/agent-review-method/`.

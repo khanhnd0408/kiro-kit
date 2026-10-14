@@ -2,7 +2,7 @@
 
 Citations go in backticks as `path:line` or `path:start-end`. The checker (`tools/agent_review/check_citations.py`) verifies them. It also checks the required fields of findings (T3) and recommendations (T6).
 
-## T0: `_progress.md` (manual mode only)
+## T0: `_progress.md` (chat mode only)
 
 ```markdown
 # Progress

@@ -5,7 +5,7 @@ Phase 6 changes source code, so it works differently from Phases 1 to 5.
 ## 6.0 Before you start (done by me)
 
 - I delete `docs/agent-review/.review-mode`, which turns the guard hook off.
-- I use Kiro's default agent, or a Spec session for larger items, not the `agent-reviewer` agent, which can only write under `docs/agent-review/`.
+- I use the default agent, not the IDE's `agent-reviewer` agent, which can only write under `docs/agent-review/`.
 
 ## 6.1 Restate the plan
 
@@ -31,4 +31,9 @@ Mark the item as done or partial in `docs/agent-review/07-recommendations.md`, w
 
 Report the files changed, the test results, the eval results (or "not run"), and anything left open.
 
-For a larger item, I may ask you to turn it into a Kiro spec first (`.kiro/specs/<name>/requirements.md`, `design.md`, `tasks.md`), so each task runs with approvals. Conventions we adopt can go into a steering file, `.kiro/steering/agent-prompting.md`.
+A larger item can run as a structured job instead of a chat:
+
+- **Kiro Crew:** write a Task Runner spec for the item (`## Goal`, `## Requirements`, `## Acceptance criteria`, with the tests to pass) and run it with `kirocrew run <spec>`. The runner works in a git worktree, runs the tests, has an independent reviewer check each diff, and commits on its own branch. Mark risky steps with `force_approval: true`.
+- **Kiro IDE:** turn the item into a Kiro spec (`.kiro/specs/<name>/requirements.md`, `design.md`, `tasks.md`), so each task runs with approvals.
+
+Conventions we adopt can go into a steering file, `.kiro/steering/agent-prompting.md`.
