@@ -74,6 +74,12 @@ if [ "$TARGET" = "$REF_SRC" ] || [ "$TARGET" = "$KIT_REPO" ]; then
   exit 2
 fi
 
+KIT_VERSION="$(git -C "$KIT_DIR" log -1 --format='%h (%cd)' --date=short 2>/dev/null || echo "unknown")"
+echo "== agent-review kit $KIT_VERSION, surface: $SURFACE, python: $(python3 --version 2>&1)"
+if env | grep -q '^KIROCREW_'; then
+  echo "  note: running inside a Kiro Crew session. That's fine; the self-tests account for Crew's sandbox."
+fi
+
 AR_HOME="${AGENT_REVIEW_HOME:-$HOME/.kiro-agent-review}"
 REF_ROOT="${AGENT_REVIEW_REFERENCE:-$AR_HOME/reference}"
 mkdir -p "$REF_ROOT"

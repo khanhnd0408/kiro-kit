@@ -143,6 +143,7 @@ Use one new chat per message:
 
 | Symptom | Fix |
 |---|---|
+| `install.sh` reports "crew_hooks self-test FAILED" | Check the first line of the installer output, `== agent-review kit <commit>`. It should match the latest commit; if not, run `git pull` and install again. Each failed check prints its exit code and output, followed by an environment block. Paste everything from "FAILED" down when you ask for help. To rerun only this test, use `python3 -I ~/.kiro-agent-review/bin/crew_hooks.py self-test --project /path/to/project --verbose`. |
 | The agent ignores the method | Start the message with `agent-review:`. Check the session's project directory. Steering edits apply from the next session. Add the inject hook if it keeps happening. |
 | The agent can't read REFERENCE_ROOT | Check the path in `inputs.md`, and run `kirocrew doctor`. The sandbox hides only credential folders such as `.gnupg`, `.docker` and `.gcloud`. |
 | A Task Runner task can't find `docs/agent-review-method` | Commit the kit on the branch you run from. Worktrees only contain committed files. |

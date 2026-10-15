@@ -13,7 +13,7 @@ docs/agent-review-method/inputs.md.
                            so the agent keeps working. It blocks at most twice for the same problems.
   crew_hooks.py guard      PreToolUse hook. Runs the project's tools/agent_review/guard.py.
                            Exit 2 blocks the call, and Crew sends stderr to the model.
-  crew_hooks.py self-test --project PATH
+  crew_hooks.py self-test --project PATH [--verbose]
 
 Everything fails open: on any internal error it exits 0 with no output. A PreToolUse hook
 that crashes or times out blocks every tool call in Crew, so this script never raises.
@@ -23,6 +23,7 @@ Standard library only. No network.
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -231,29 +232,68 @@ def cmd_guard(payload):
     return 0
 
 
-def self_test(project):
+def outside_temp_base():
+    """Return a writable temp folder that isn't inside a review project.
+
+    Sandboxes, Crew's agent sessions among them, sometimes point TMPDIR into the workspace.
+    """
+    for base in (tempfile.gettempdir(), "/tmp", "/var/tmp", os.path.expanduser("~")):
+        if base and os.path.isdir(base) and os.access(base, os.W_OK) and not find_root(base):
+            return base
+    return None
+
+
+def write_now(path, text):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    now = time.time()
+    os.utime(path, (now, now))  # explicit times: some network filesystems keep their own clock
+
+
+def self_test(project, verbose=False):
     if not project or not os.path.isfile(os.path.join(project, MARKER)):
         print("self-test needs --project PATH pointing at a project with the kit installed", file=sys.stderr)
         return 2
+    project = os.path.abspath(project)
+    me = os.path.abspath(__file__)
     try:
-        usage = subprocess.run([sys.executable, "-I", os.path.join(project, CHECKER), "--help"],
-                               capture_output=True, text=True, timeout=30).stdout
+        usage = subprocess.run([sys.executable, "-I", os.path.join(project, CHECKER), "--help"], capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         usage = ""
     if "--recent" not in usage:
         print("warning: the project's tools/agent_review/check_citations.py is from an older kit. The stop hook "
               "will check every deliverable instead of recent ones. Rerun the latest install.sh to update it.",
               file=sys.stderr)
+    base = outside_temp_base()
+    system_tmp = tempfile.gettempdir()
+    info = [
+        f"python: {sys.version.split()[0]} ({sys.executable}) on {platform.platform()}",
+        f"hook helper: {me}",
+        f"project: {project} (checker supports --recent: {'yes' if '--recent' in usage else 'no'})",
+        f"TMPDIR: {system_tmp} (inside a review project: {'yes' if find_root(system_tmp) else 'no'}); "
+        f"self-test temp base: {base or system_tmp}",
+        "KIROCREW_* variables: " + (", ".join(sorted(k for k in os.environ if k.startswith("KIROCREW"))) or "none"),
+        f"stdout encoding: {sys.stdout.encoding}",
+    ]
     failures = []
-    me = os.path.abspath(__file__)
-    with tempfile.TemporaryDirectory() as tmp:
+
+    def check(name, ok, result=None):
+        if ok:
+            return
+        detail = ""
+        if result is not None:
+            code, out, err = result
+            detail = f"\n      exit={code} stdout={out.strip()[:300]!r} stderr={err.strip()[:300]!r}"
+        failures.append(name + detail)
+
+    with tempfile.TemporaryDirectory(dir=base) as tmp:
         root, fake_home = os.path.join(tmp, "proj"), os.path.join(tmp, "home")
         for rel in (RULES, INPUTS, CHECKER, GUARD):
             os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
             shutil.copy(os.path.join(project, rel), os.path.join(root, rel))
         os.makedirs(os.path.join(root, "src"))
-        with open(os.path.join(root, "src", "app.py"), "w", encoding="utf-8") as handle:
-            handle.write("a = 1\nb = 2\n")
+        write_now(os.path.join(root, "src", "app.py"), "a = 1\nb = 2\n")
         cards = os.path.join(root, "docs", "agent-review", "scorecards")
         os.makedirs(cards)
         os.makedirs(fake_home)
@@ -261,65 +301,85 @@ def self_test(project):
         env.pop("KIROCREW_HOOK_CONTEXT", None)
 
         def run(sub, payload, raw=None):
-            proc = subprocess.run([sys.executable, "-I", me, sub], input=raw if raw is not None else json.dumps(payload),
-                                  capture_output=True, text=True, env=env, timeout=60)
-            return proc.returncode, proc.stdout, proc.stderr
+            try:
+                proc = subprocess.run([sys.executable, "-I", me, sub],
+                                      input=raw if raw is not None else json.dumps(payload), capture_output=True,
+                                      encoding="utf-8", errors="replace", env=env, timeout=60)
+                return proc.returncode, proc.stdout or "", proc.stderr or ""
+            except (OSError, subprocess.SubprocessError) as error:
+                return -1, "", f"could not run '{sub}': {error}"
 
-        code, out, _ = run("inject", {"cwd": os.path.join(root, "src")})
-        if code != 0 or "Agent review method: rules" not in out:
-            failures.append("inject should print the rules when cwd is inside the project")
-        code, out, _ = run("inject", {"cwd": tmp})
-        if out.strip():
-            failures.append("inject should print nothing outside a review project")
+        result = run("inject", {"cwd": os.path.join(root, "src")})
+        check("inject should print the rules when cwd is inside the project",
+              result[0] == 0 and "Agent review method: rules" in result[1], result)
+        if base:
+            result = run("inject", {"cwd": tmp})
+            check("inject should print nothing outside a review project", not result[1].strip(), result)
+        else:
+            info.append("note: skipped the outside-a-project check, because every temp folder found is inside a review project")
 
         bad = os.path.join(cards, "logs.md")
-        with open(bad, "w", encoding="utf-8") as handle:
-            handle.write("# Scorecard: logs\nSee `src/app.py:99`.\n")
-        outputs = [run("stop", {"cwd": root})[1].strip() for _ in range(3)]
-        if not (outputs[0].startswith("{") and json.loads(outputs[0]).get("decision") == "block"):
-            failures.append("stop should block when a recent deliverable has a bad citation")
-        if not outputs[1].startswith("{"):
-            failures.append("stop should block a second time for the same problems")
-        if outputs[2] or not os.path.isfile(os.path.join(root, NOTE)):
-            failures.append("stop should allow the third time and write the unresolved note")
-        with open(bad, "w", encoding="utf-8") as handle:
-            handle.write("# Scorecard: logs\nSee `src/app.py:2`.\n")
-        if run("stop", {"cwd": root})[1].strip():
-            failures.append("stop should print nothing when citations are fine")
+        write_now(bad, "# Scorecard: logs\nSee `src/app.py:99`.\n")
+        results = [run("stop", {"cwd": root}) for _ in range(3)]
+        first = results[0][1].strip()
+        try:
+            blocked = first.startswith("{") and json.loads(first).get("decision") == "block"
+        except ValueError:
+            blocked = False
+        check("stop should block when a recent deliverable has a bad citation", blocked, results[0])
+        check("stop should block a second time for the same problems", results[1][1].strip().startswith("{"), results[1])
+        check("stop should allow the third time and write the unresolved note",
+              not results[2][1].strip() and os.path.isfile(os.path.join(root, NOTE)), results[2])
+        write_now(bad, "# Scorecard: logs\nSee `src/app.py:2`.\n")
+        result = run("stop", {"cwd": root})
+        check("stop should print nothing when citations are fine", not result[1].strip(), result)
 
-        with open(os.path.join(fake_home, "projects.txt"), "w", encoding="utf-8") as handle:
-            handle.write(root + "\n")
-        if "Agent review method: rules" not in run("inject", {})[1]:
-            failures.append("inject should fall back to the single registered project when no cwd is given")
+        write_now(os.path.join(fake_home, "projects.txt"), root + "\n")
+        result = run("inject", {})
+        check("inject should fall back to the single registered project when no cwd is given",
+              "Agent review method: rules" in result[1], result)
 
         write_out = {"cwd": root, "tool_name": "fs_write", "tool_input": {"path": "src/app.py"}}
-        if run("guard", write_out)[0] != 0:
-            failures.append("guard should allow everything when review mode is off")
-        with open(os.path.join(root, "docs", "agent-review", ".review-mode"), "w", encoding="utf-8") as handle:
-            handle.write("on\n")
-        code, _, err = run("guard", write_out)
-        if code != 2 or "agent-review guard" not in err:
-            failures.append("guard should block a write outside docs/agent-review in review mode")
-        if run("guard", {"cwd": root, "tool": "fs_write", "arguments": {"path": "docs/agent-review/x.md"}})[0] != 0:
-            failures.append("guard should allow a deliverable write given alternative key names")
-        if run("guard", {"cwd": root, "tool": "execute_bash", "arguments": {"command": "curl http://x"}})[0] != 2:
-            failures.append("guard should block curl given alternative key names")
-        if run("guard", {}, raw="not json")[0] != 0 or run("guard", {"tool_name": "fs_write"})[0] != 0:
-            failures.append("guard should allow when it can't tell which project the call belongs to")
+        result = run("guard", write_out)
+        check("guard should allow everything when review mode is off", result[0] == 0, result)
+        write_now(os.path.join(root, "docs", "agent-review", ".review-mode"), "on\n")
+        result = run("guard", write_out)
+        check("guard should block a write outside docs/agent-review in review mode",
+              result[0] == 2 and "agent-review guard" in result[2], result)
+        result = run("guard", {"cwd": root, "tool": "fs_write", "arguments": {"path": "docs/agent-review/x.md"}})
+        check("guard should allow a deliverable write given alternative key names", result[0] == 0, result)
+        result = run("guard", {"cwd": root, "tool": "execute_bash", "arguments": {"command": "curl http://x"}})
+        check("guard should block curl given alternative key names", result[0] == 2, result)
+        result = run("guard", {}, raw="not json")
+        check("guard should allow input it can't parse", result[0] == 0, result)
+        result = run("guard", {"tool_name": "fs_write"})
+        check("guard should allow when it can't tell which project the call belongs to", result[0] == 0, result)
     if failures:
         print("crew_hooks self-test FAILED", file=sys.stderr)
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
+        print("  environment:", file=sys.stderr)
+        for line in info:
+            print(f"    {line}", file=sys.stderr)
+        print("  Paste everything from 'crew_hooks self-test FAILED' down when you ask for help.", file=sys.stderr)
         return 1
+    if verbose:
+        for line in info:
+            print(f"  {line}")
     print("crew_hooks self-test ok")
     return 0
 
 
 def main(argv):
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     command = argv[0] if argv else ""
     if command == "self-test":
         project = argv[argv.index("--project") + 1] if "--project" in argv and argv.index("--project") + 1 < len(argv) else ""
-        return self_test(project)
+        return self_test(project, verbose="--verbose" in argv)
     handlers = {"inject": cmd_inject, "stop": cmd_stop, "guard": cmd_guard}
     if command not in handlers:
         print(__doc__, file=sys.stderr)
