@@ -1,0 +1,8 @@
+{
+  "_comment": "Settings for crewctl. plan is \"free\" or \"paid\". On \"free\", crewctl refuses models that need a paid Kiro plan, and uses each agent's \"model\". On \"paid\", it uses \"paid_model\" where an agent sets one. Change this one word when you move to a machine with a paid plan. Leave agents_dir and crew_home out to use ~/.kiro/agents and ~/.kiro/crew on the machine where this runs.",
+  "plan": "free",
+  "kirocrew_bin": "kirocrew",
+  "_skills_comment": "Optional. skills_dir: where skills with destination \"crew\" are written (default <crew home>/skills). project_skills_dir: where destination \"project\" skills go, for example \"../.kiro/skills\" (relative to this folder).",
+  "project_skills_dir": "",
+  "allow_unknown_models": false
+}

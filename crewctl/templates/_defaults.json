@@ -1,0 +1,6 @@
+{
+  "_comment": "Every *.agent.json starts from these values. A field set in the agent file wins. Do not put name, kiro_agent or prompt here.",
+  "model": "auto",
+  "workspace": "default",
+  "include_mcp_json": false
+}

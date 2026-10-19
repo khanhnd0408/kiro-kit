@@ -1,0 +1,46 @@
+{
+  "_comment": "Copy this file to <name>.agent.json. Keys starting with _ are ignored. Delete the fields you do not need. Only name, prompt (or prompt_file) and tools are required.",
+
+  "name": "my-crewmate",
+  "_comment_name": "The crewmate's name in Crew. Also the default agent file name (~/.kiro/agents/<name>.json) if it is a valid file name. Cannot be 'default'.",
+
+  "kiro_agent": "my-crewmate",
+  "_comment_kiro_agent": "Optional. The agent file name when name has spaces or other characters a file name cannot have. Letters, digits, '.', '_', '-'. Cannot start with 'kirocrew' or be plan/spec/vibe/quick-spec/bug-fix/autonomous.",
+
+  "display_name": "My Crewmate",
+  "description": "One line: what this crewmate does.",
+  "triggers": "When to use this crewmate. Crew's orchestrator reads this to choose a crewmate. Empty means it is never offered.",
+
+  "model": "qwen3-coder-next",
+  "_comment_model": "The model used when crewctl.json says plan: free. Run `crewctl models` for the list. On the free plan crewctl rejects paid-only models.",
+  "paid_model": "deepseek-3.2",
+  "_comment_paid_model": "Optional. The model used when crewctl.json says plan: paid. Lets you pick the paid model now and switch machines by changing one setting.",
+  "reasoning_effort": "",
+  "_comment_reasoning_effort": "Empty, or low / medium / high / xhigh / max. Only reasoning-capable models use it.",
+
+  "prompt_file": "prompts/my-crewmate.md",
+  "_comment_prompt": "Use \"prompt\": \"text\" for a short prompt, or prompt_file for a file inside this folder. Exactly one of the two.",
+
+  "tools": ["fs_read", "grep", "glob"],
+  "_comment_tools": "Required. The tools this crewmate may use. [] means none. \"*\" means all, including write and shell (crewctl warns).",
+  "allowed_tools": [],
+  "_comment_allowed_tools": "Optional. Tools that run without asking for approval.",
+
+  "mcp_servers": {},
+  "_comment_mcp_servers": "Optional. {\"name\": {\"command\": \"...\", \"args\": [], \"env\": {}}} or {\"name\": {\"url\": \"...\"}}. Never put real tokens here; crewctl rejects them.",
+  "include_mcp_json": false,
+  "crew_servers": [],
+  "_comment_crew_servers": "Optional. [\"core\"] lets this crewmate spawn other crewmates, send messages and use Crew memory; [\"cron\"] adds schedules. crewctl looks up the command on the machine it runs on. Or {\"core\": {\"disabledTools\": [\"task_run\"]}} to hide tools. Give it only to crewmates that need it.",
+  "skills": [],
+  "_comment_skills": "Optional. Paths to SKILL.md files, for example [\".kiro/skills/log-triage/SKILL.md\"]. Each becomes a skill:// entry in resources. Custom agents don't load skills unless listed here.",
+  "resources": [],
+  "_comment_resources": "Optional. [\"file://.kiro/steering/**/*.md\", \"skill://.kiro/skills/*/SKILL.md\"]",
+  "permissions": {},
+  "_comment_permissions": "Optional. {\"rules\": [{\"capability\": \"fs_write\", \"match\": [\"docs/**\"], \"effect\": \"allow\"}]}. Needs kiro-cli 2.23.0 or newer.",
+
+  "workspace": "default",
+  "workspace_dir": "",
+  "_comment_workspace": "The Crew workspace this crewmate works in. workspace_dir is only used when the workspace does not exist yet.",
+  "session_color": "",
+  "starred": false
+}

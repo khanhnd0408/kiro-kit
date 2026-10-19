@@ -1,0 +1,14 @@
+{
+  "name": "log-analyst",
+  "display_name": "Log Analyst",
+  "description": "Reads log excerpts and reports error patterns. Read-only.",
+  "triggers": "Use when a task needs log lines summarized, grouped by error signature, or compared between two time windows.",
+  "model": "qwen3-coder-next",
+  "paid_model": "deepseek-3.2",
+  "prompt_file": "prompts/log-analyst.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob"
+  ]
+}

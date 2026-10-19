@@ -1,0 +1,30 @@
+{
+  "_comment": "Copy to skills/<name>.skill.json, or run `crewctl skills new <name>`. Every field except name, description and steps is optional. `crewctl skills plan` shows the SKILL.md this makes before anything is written.",
+
+  "name": "replace-with-skill-name",
+  "description": "Use when <the situation that should load this skill>. <One sentence on what it produces.>",
+  "triggers": ["phrase a person would type", "another phrase", "a third phrase"],
+
+  "destination": "crew",
+
+  "title": "Readable title",
+  "goal": "One or two sentences: what this skill achieves and what done looks like.",
+  "when_to_use": [
+    "A situation that should load it.",
+    "Another situation."
+  ],
+  "steps": [
+    "First concrete action, with the exact command or tool where it matters.",
+    "Next action. Say what to look at in the result.",
+    "Stop condition: when to ask the user instead of going on."
+  ],
+  "output": "The exact shape of the answer (headings, fields, how to cite evidence).",
+  "gotchas": [
+    "A mistake this procedure has already hit."
+  ],
+
+  "always": false,
+  "repo_scope": "",
+  "body_file": "",
+  "files": {}
+}

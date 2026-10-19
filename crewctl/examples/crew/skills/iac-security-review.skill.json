@@ -1,0 +1,33 @@
+{
+  "name": "iac-security-review",
+  "description": "Use when reviewing Terraform, Kubernetes, Helm, Dockerfile or CI pipeline changes for security problems. Produces a findings list with file:line evidence and a severity per finding. Read-only.",
+  "triggers": [
+    "review terraform",
+    "review iac",
+    "k8s manifest review",
+    "dockerfile security",
+    "pipeline security review"
+  ],
+  "destination": "crew",
+  "title": "IaC security review",
+  "goal": "Read the change and report security problems with evidence. Never apply, plan or deploy anything.",
+  "steps": [
+    "Run `python3 {{skill_dir}}/scripts/changed_iac.py <base>` (the base branch, for example origin/main). It lists the changed files grouped as terraform, helm, dockerfile, ci and kubernetes. Exit code 3 means nothing relevant changed; say so and stop.",
+    "Read each changed file in full, then the files it references (modules, values, base images).",
+    "Terraform: public ingress on non-HTTP ports, `*` in IAM actions or resources, unencrypted storage, public buckets, secrets in variables or defaults.",
+    "Kubernetes/Helm: privileged or root containers, hostPath/hostNetwork, missing limits, `latest` tags, secrets in env or ConfigMaps, wildcard RBAC.",
+    "Dockerfile: unpinned base image, running as root, secrets in ARG/ENV/layers, `curl | sh`.",
+    "CI: untrusted input in shell steps, long-lived credentials instead of OIDC, third-party actions not pinned to a commit.",
+    "If tfsec, checkov, trivy or kube-linter are installed, run them read-only and merge the results. If not, say so; do not install anything.",
+    "Only report what you read. Mark anything inferred as \"unverified\"."
+  ],
+  "output": "One table: severity | file:line | problem | evidence (quoted line) | fix. End with \"Not checked:\" listing what you could not see (modules not in the repo, remote state, runtime config).",
+  "gotchas": [
+    "A default value in a variable file is still a finding if it opens access.",
+    "A finding in code that the change removes is not a finding.",
+    "The script only lists files. It does not judge them; read each one yourself."
+  ],
+  "files": {
+    "scripts/changed_iac.py": "skills/scripts/changed_iac.py"
+  }
+}

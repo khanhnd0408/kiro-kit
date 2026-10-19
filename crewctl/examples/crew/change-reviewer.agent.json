@@ -1,0 +1,44 @@
+{
+  "name": "change-reviewer",
+  "display_name": "Change Reviewer",
+  "description": "Reviews a code diff for bugs and risky changes. Read-only.",
+  "triggers": "Use when a task needs a commit, merge request or diff checked for removed guards, changed defaults or broken callers.",
+  "model": "deepseek-3.2",
+  "paid_model": "claude-sonnet-5.5",
+  "reasoning_effort": "",
+  "prompt_file": "prompts/change-reviewer.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "execute_bash"
+  ],
+  "permissions": {
+    "rules": [
+      {
+        "capability": "shell",
+        "match": [
+          "git log*",
+          "git show*",
+          "git diff*",
+          "git blame*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "match": [
+          "git push*",
+          "git commit*",
+          "git reset*",
+          "rm *"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_write",
+        "effect": "deny"
+      }
+    ]
+  }
+}
