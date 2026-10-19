@@ -1,0 +1,28 @@
+{
+  "name": "go-engineering",
+  "description": "Use when writing, reviewing or tuning Go: clean code, concurrency, pprof and benchmarks, CPU architecture and Linux kernel effects.",
+  "triggers": [
+    "go performance",
+    "golang tuning",
+    "go concurrency",
+    "go pprof",
+    "go cpu architecture"
+  ],
+  "title": "Go engineering",
+  "goal": "Write code that is correct first, then fast, with measurements to prove it.",
+  "steps": [
+    "Read `{{skill_dir}}/references/go.md` for the sections that match the task (clean code, performance, concurrency, architecture-specific work).",
+    "Look at the project first: version, dependencies, existing style, tests, how it is built and run. Follow its conventions.",
+    "For a performance task: write or find a benchmark, record the baseline, profile, change one thing, re-measure. Report before and after numbers with the command that produced them.",
+    "Run the project's formatter, linter and tests. Report what you ran and the results; if you could not run something, say so.",
+    "State what you did not verify (other platforms, other versions, production load)."
+  ],
+  "output": "The change or review, with the evidence: commands run, benchmark numbers before and after, and a short list of risks and unverified points.",
+  "gotchas": [
+    "Never claim a speedup without a measurement from this code.",
+    "Version-specific claims must be checked against the version in use."
+  ],
+  "files": {
+    "references/go.md": "skills/assets/lang/go.md"
+  }
+}

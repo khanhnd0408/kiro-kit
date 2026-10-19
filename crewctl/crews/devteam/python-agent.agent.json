@@ -1,0 +1,34 @@
+{
+  "name": "python-agent",
+  "display_name": "Python Agent",
+  "description": "Python development, tuning, gRPC, concurrency (GIL, free-threading, subinterpreters), queues and caches.",
+  "triggers": "Use for writing, reviewing or tuning Python code, including gRPC, async, multiprocessing, message queues and caches.",
+  "model": "deepseek-3.2",
+  "paid_model": "claude-sonnet-5.5",
+  "prompt_file": "prompts/python-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "fs_write",
+    "execute_bash"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/skill_search"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "skill_search"
+      ]
+    }
+  },
+  "skills": [
+    "~/.kiro/crew/skills/python-engineering/SKILL.md"
+  ]
+}

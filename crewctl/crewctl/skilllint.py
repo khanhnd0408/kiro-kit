@@ -32,8 +32,12 @@ def _frontmatter(text):
             return fields, True
         match = KEY_RE.match(line)
         if match:
-            fields[match.group(1)] = match.group(2).strip().strip("'\"")
+            fields[match.group(1)] = match.group(2).strip()
     return fields, False
+
+
+def _unquote(value):
+    return value[1:-1] if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"" else value
 
 
 def lint_file(skill_file):
@@ -49,7 +53,8 @@ def lint_file(skill_file):
     except (OSError, UnicodeDecodeError) as error:
         add("error", f"cannot read as UTF-8: {error}")
         return out
-    fields, closed = _frontmatter(text)
+    raw_fields, closed = _frontmatter(text)
+    fields = {key: _unquote(value) for key, value in raw_fields.items()}
     if not fields and not closed:
         add("error", "no frontmatter: the file must start with a line '---' at column 0")
         return out
@@ -73,7 +78,7 @@ def lint_file(skill_file):
             add("error", f"description is {len(description)} characters; the limit is {MAX_DESCRIPTION}")
         if not re.search(r"\buse (?:when|this|for|after|before)\b", description, re.I):
             add("warn", "description does not say when to use the skill; start from 'Use when ...' so it triggers reliably")
-        if ": " in description:
+        if ": " in description and raw_fields["description"][:1] not in ("'", '"'):
             add("warn", "description contains ': ' - Crew reads it, a strict YAML parser rejects it; wrap the value in quotes")
 
     triggers = [t for t in re.split(r"[,;]", fields.get("triggers", "")) if t.strip()]

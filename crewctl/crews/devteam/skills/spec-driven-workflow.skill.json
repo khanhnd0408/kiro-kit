@@ -1,0 +1,35 @@
+{
+  "name": "spec-driven-workflow",
+  "description": "Use when a user request must become a spec, a plan, a todo list and a checklist that other agents can follow, or when checking whether the work on a spec is complete.",
+  "triggers": [
+    "write a spec",
+    "implementation plan",
+    "todo list for agents",
+    "checklist for the work",
+    "spec driven"
+  ],
+  "title": "Spec, plan, todo, checklist",
+  "goal": "Turn a request into four linked documents so an implementing agent can work without guessing and completion can be checked mechanically.",
+  "steps": [
+    "Create the folder `docs/specs/<feature-name>/` (or the place the project already uses) and copy the four templates from `{{skill_dir}}/references/` into it: spec.md, plan.md, todo.md, checklist.md.",
+    "Spec: quote the request, then write numbered, testable requirements (functional and non-functional), scope, constraints, assumptions and open questions. Ask the user to answer open questions that block the plan; do not guess.",
+    "Plan: read the code first. Record the current state with file paths and line numbers you read. Decide where each change goes, whether to create a new file (only when no module owns the responsibility or a file would grow past about 400 lines or mix two responsibilities), the tests to write, risks and rollback. Map every requirement to work.",
+    "Todo: write ordered tasks with dependencies. For each: the exact file, what to change (function names, inputs, outputs, errors), what not to touch, how to comment (explain why, at most one short comment per non-obvious decision, a docstring on each new public function, no commented-out code), the test to write first, and the condition that means done.",
+    "Checklist: one line per requirement, per task and per quality gate. Every box starts unticked.",
+    "When work is reported done, run `python3 {{skill_dir}}/scripts/checklist_status.py checklist.md --require-evidence`. Exit 0 means complete. Exit 3 means it is not: list the open items and send the work back. Never tick a box without evidence and never delete an item to pass.",
+    "You write documents only. Do not edit source code."
+  ],
+  "output": "Four files in the spec folder, a short summary of open questions, and (when asked) the checklist status.",
+  "gotchas": [
+    "Every requirement needs a way to verify it.",
+    "A plan that has not read the code is a guess.",
+    "If the checklist has no checkbox lines the script reports not complete."
+  ],
+  "files": {
+    "scripts/checklist_status.py": "skills/assets/spec/checklist_status.py",
+    "references/spec.md": "skills/assets/spec/templates/spec.md",
+    "references/plan.md": "skills/assets/spec/templates/plan.md",
+    "references/todo.md": "skills/assets/spec/templates/todo.md",
+    "references/checklist.md": "skills/assets/spec/templates/checklist.md"
+  }
+}

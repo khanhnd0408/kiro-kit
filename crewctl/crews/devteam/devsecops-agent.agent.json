@@ -1,0 +1,37 @@
+{
+  "name": "devsecops-agent",
+  "display_name": "DevSecOps Agent",
+  "description": "Infrastructure, GitOps pipelines, monitoring and automation, designed to minimize known vulnerabilities.",
+  "triggers": "Use for infrastructure as code, CI/CD and GitOps design, Kubernetes, monitoring, secrets, and vulnerability-aware pipeline design.",
+  "model": "claude-sonnet-4.5",
+  "paid_model": "claude-sonnet-5.5",
+  "prompt_file": "prompts/devsecops-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "fs_write",
+    "execute_bash",
+    "web_search",
+    "web_fetch"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/skill_search"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "skill_search"
+      ]
+    }
+  },
+  "skills": [
+    "~/.kiro/crew/skills/gitops-cve-pipeline/SKILL.md",
+    "~/.kiro/crew/skills/iac-security-review/SKILL.md"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "rust-agent",
+  "display_name": "Rust Agent",
+  "description": "Rust development with safe abstractions and architecture-aware optimization.",
+  "triggers": "Use for writing, reviewing or tuning Rust code, including unsafe review, async, profiling and CPU-aware optimization.",
+  "model": "deepseek-3.2",
+  "paid_model": "claude-opus-5.5",
+  "prompt_file": "prompts/rust-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "fs_write",
+    "execute_bash"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/skill_search"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "skill_search"
+      ]
+    }
+  },
+  "skills": [
+    "~/.kiro/crew/skills/rust-engineering/SKILL.md"
+  ]
+}

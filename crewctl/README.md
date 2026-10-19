@@ -7,6 +7,7 @@ You write one small JSON file per crewmate. crewctl turns each one into the Kiro
 - How a crewmate is made, and what crewctl does and doesn't touch: [docs/how-crewmates-work.md](docs/how-crewmates-work.md)
 - Tools, skills and MCP servers for each agent: [docs/tools-skills-mcp.md](docs/tools-skills-mcp.md)
 - Crew's built-in skills, writing your own, and `crewctl skills` (builds SKILL.md files from JSON, with state; plus `lint-skills`): [docs/skills-guide.md](docs/skills-guide.md)
+- A ready-made ten-crewmate team (orchestrator, GenAI, ML/DL, architecture, Python, Go, Rust, DevSecOps, incident inspector, spec writer): [crews/devteam/README.md](crews/devteam/README.md)
 - Saving credits with cheap reader agents and scheduled collection: [docs/saving-credits.md](docs/saving-credits.md)
 - Which model to give which agent, with credit costs: [docs/model-notes.md](docs/model-notes.md)
 

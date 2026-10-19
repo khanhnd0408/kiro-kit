@@ -1,0 +1,41 @@
+{
+  "name": "orchestrator-agent",
+  "display_name": "Orchestrator",
+  "description": "Coordinates the specialist crewmates, supervises long-running subagents with a timed check loop, and verifies results.",
+  "triggers": "Use for any task that needs more than one specialist, a long-running job that must be supervised, or when it is unclear which crewmate should start.",
+  "model": "claude-sonnet-4.5",
+  "paid_model": "claude-sonnet-5.5",
+  "prompt_file": "prompts/orchestrator-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/spawn_run",
+    "@kirocrew-core/spawn_status",
+    "@kirocrew-core/spawn_list",
+    "@kirocrew-core/spawn_steer",
+    "@kirocrew-core/spawn_continue",
+    "@kirocrew-core/spawn_release",
+    "@kirocrew-core/wait"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "spawn_run",
+        "spawn_status",
+        "spawn_list",
+        "spawn_steer",
+        "spawn_continue",
+        "spawn_release",
+        "wait"
+      ]
+    }
+  }
+}

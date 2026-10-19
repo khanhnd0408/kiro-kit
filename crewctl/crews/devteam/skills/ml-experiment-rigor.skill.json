@@ -1,0 +1,31 @@
+{
+  "name": "ml-experiment-rigor",
+  "description": "Use when building, comparing or reviewing a classic ML or deep learning result. Enforces leakage checks, baselines, uncertainty intervals and a script-computed confidence level.",
+  "triggers": [
+    "ml experiment review",
+    "model comparison",
+    "check data leakage",
+    "evaluate classifier",
+    "statistics for model"
+  ],
+  "title": "ML and DL experiment rigor",
+  "goal": "A modelling claim is accepted only with a correct split, a baseline, an uncertainty estimate and evidence. Confidence is computed by a script.",
+  "steps": [
+    "Read `{{skill_dir}}/references/ml-checklist.md` and fill the applicable items with evidence from code, logs and run outputs.",
+    "Check the split and every fit step in the code first (items M2, M3, M9). Leakage invalidates everything after it.",
+    "Compute or request metrics with an interval: `python3 {{skill_dir}}/scripts/score_decision.py wilson K N` for proportions; a bootstrap (at least 1000 resamples) or repeated seeds for other metrics. State what was done.",
+    "Compare against the baseline using a paired method on the same cases. Say 'no demonstrated difference' when intervals overlap.",
+    "Write the checklist JSON (`score_decision.py example` shows the shape), run `score_decision.py score FILE.json`, and report its confidence word and numbers unchanged.",
+    "List what to run next to close each open item (more seeds, a different split, a slice analysis)."
+  ],
+  "output": "Question, data and split summary, baseline and model results with intervals, the script output, open items, and next experiments in priority order.",
+  "gotchas": [
+    "The test set is used once. If it was used to choose anything, say the estimate is optimistic.",
+    "If many variants were tried, say how many; the best one is biased upward.",
+    "Accuracy on imbalanced data is not evidence."
+  ],
+  "files": {
+    "scripts/score_decision.py": "skills/assets/decision/score_decision.py",
+    "references/ml-checklist.md": "skills/assets/decision/ml-checklist.md"
+  }
+}

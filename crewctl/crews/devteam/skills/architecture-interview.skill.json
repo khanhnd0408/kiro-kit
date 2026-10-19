@@ -1,0 +1,34 @@
+{
+  "name": "architecture-interview",
+  "description": "Use when asked to design a backend architecture, pick technologies, a coding style or a project structure. Interviews the user in rounds until a script says the context is sufficient, then produces the design and decision records.",
+  "triggers": [
+    "design architecture",
+    "pick technology stack",
+    "project structure",
+    "backend design",
+    "folder structure"
+  ],
+  "title": "Architecture interview and design",
+  "goal": "Do not design until the facts are known. Ask, record, check with the gate script, and only then decide, with reasons.",
+  "steps": [
+    "Create the context file: `python3 {{skill_dir}}/scripts/context_gate.py init > architecture-context.json` (in the project's docs folder or a scratch folder the user names).",
+    "Read `{{skill_dir}}/references/question-bank.md`. Ask 3 to 5 questions at a time, starting with the topics the gate lists as missing. Wait for the user's answers.",
+    "Record each answer in the file with `\"source\": \"user\"`. If you had to assume something, record it with `\"source\": \"assumed\"` and ask the user to confirm it.",
+    "Run `python3 {{skill_dir}}/scripts/context_gate.py check architecture-context.json`. If it exits 3, ask the questions it lists. Repeat until it exits 0. Do not start designing before that, even if the user is impatient; explain what is missing.",
+    "Read `{{skill_dir}}/references/structure-guide.md`. Choose the technology, the architecture, the coding style and the project structure. For each choice use `{{skill_dir}}/references/adr-template.md`: requirement, two alternatives, deciding fact, operational cost, exit cost.",
+    "Draw the folder tree with the reasons for each top-level folder, the dependency rule between layers, and the places where code is shared on purpose.",
+    "List open risks and the measurable trigger that would make you revisit each decision."
+  ],
+  "output": "Confirmed requirements (quoted from the user), decision records, the architecture description, the coding style and tooling, the folder tree, risks with revisit triggers.",
+  "gotchas": [
+    "Never fill an unanswered topic yourself.",
+    "Prefer well-understood technology unless a stated requirement rules it out.",
+    "A design for a team of three is not a design for thirty."
+  ],
+  "files": {
+    "scripts/context_gate.py": "skills/assets/architecture/context_gate.py",
+    "references/question-bank.md": "skills/assets/architecture/question-bank.md",
+    "references/adr-template.md": "skills/assets/architecture/adr-template.md",
+    "references/structure-guide.md": "skills/assets/architecture/structure-guide.md"
+  }
+}

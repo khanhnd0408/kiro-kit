@@ -1,0 +1,35 @@
+{
+  "name": "genai-decision-checklist",
+  "description": "Use when making or reviewing any GenAI application decision (model, RAG vs fine-tuning, agent design, guardrails, rollout). Scores the decision against a weighted checklist with a script, so confidence comes from evidence, not from the model's feeling.",
+  "triggers": [
+    "genai decision",
+    "choose a model",
+    "rag or fine-tuning",
+    "evaluate llm app",
+    "agent design review"
+  ],
+  "title": "GenAI decision checklist",
+  "goal": "Every decision gets a checklist, evidence per item, and a confidence level computed by a script. The model never states a confidence on its own.",
+  "when_to_use": [
+    "Choosing between designs, models, prompts, retrieval or guardrail options.",
+    "Reviewing a claim that a GenAI feature 'works'."
+  ],
+  "steps": [
+    "Read `{{skill_dir}}/references/genai-checklist.md`. Pick the items that apply; mark the rest `n/a` with a reason.",
+    "For each item gather evidence by reading code, configs, eval files or running the project's own tests. Record file:line, a command and its output, or a measurement. If you cannot find evidence, the status is `unknown`, not `yes`.",
+    "For any quality claim, count successes and trials, then run `python3 {{skill_dir}}/scripts/score_decision.py wilson K N` and report the interval with n.",
+    "Write the checklist as JSON (`python3 {{skill_dir}}/scripts/score_decision.py example` shows the shape) and run `python3 {{skill_dir}}/scripts/score_decision.py score FILE.json`.",
+    "Report the script's confidence word and numbers exactly as printed, then the open items and a concrete step that would close each one. Do not add your own percentage or adjectives.",
+    "If confidence is `blocked`, `low`, or any blocker is unmet, recommend gathering evidence before deciding. Say what is needed."
+  ],
+  "output": "Decision, options with their checklist results, the script output (confidence, coverage, unknown share, open items), the intervals for each quality claim, and the next evidence to collect.",
+  "gotchas": [
+    "A 'yes' without evidence counts as unknown; this is intended.",
+    "Do not change weights or blockers to reach a better result. If a weight seems wrong, say so and ask.",
+    "Evaluation sets under 30 cases are anecdotal."
+  ],
+  "files": {
+    "scripts/score_decision.py": "skills/assets/decision/score_decision.py",
+    "references/genai-checklist.md": "skills/assets/decision/genai-checklist.md"
+  }
+}

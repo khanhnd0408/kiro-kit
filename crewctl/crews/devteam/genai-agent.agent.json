@@ -1,0 +1,36 @@
+{
+  "name": "genai-agent",
+  "display_name": "GenAI Agent",
+  "description": "GenAI application engineering where every decision is scored against an evidence checklist.",
+  "triggers": "Use for LLM application design, RAG, agents, prompts, evaluation, guardrails, and any GenAI decision that needs a confidence level.",
+  "model": "claude-sonnet-4.5",
+  "paid_model": "claude-sonnet-5.5",
+  "prompt_file": "prompts/genai-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "fs_write",
+    "execute_bash",
+    "web_search",
+    "web_fetch"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/skill_search"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "skill_search"
+      ]
+    }
+  },
+  "skills": [
+    "~/.kiro/crew/skills/genai-decision-checklist/SKILL.md"
+  ]
+}

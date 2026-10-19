@@ -1,0 +1,36 @@
+{
+  "name": "mldl-agent",
+  "display_name": "ML/DL Agent",
+  "description": "Classic machine learning, deep learning and statistics, with leakage checks, baselines and uncertainty.",
+  "triggers": "Use for any task that needs statistics, machine learning or deep learning: data analysis, modelling, evaluation, experiment review.",
+  "model": "claude-sonnet-4.5",
+  "paid_model": "claude-sonnet-5.5",
+  "prompt_file": "prompts/mldl-agent.md",
+  "tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "fs_write",
+    "execute_bash",
+    "web_search",
+    "web_fetch"
+  ],
+  "allowed_tools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "@kirocrew-core/skill_search"
+  ],
+  "crew_servers": {
+    "core": {
+      "tools": [
+        "skill_search"
+      ]
+    }
+  },
+  "skills": [
+    "~/.kiro/crew/skills/ml-experiment-rigor/SKILL.md"
+  ]
+}
