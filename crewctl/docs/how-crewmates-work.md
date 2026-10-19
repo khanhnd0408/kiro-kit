@@ -102,5 +102,5 @@ I read code and docs but ran nothing, so these are open:
 - [Crew: agents](https://kiro.dev/docs/crew/capabilities/agents/), [agent templates](https://kiro.dev/docs/crew/capabilities/agent-templates/), [CLI reference](https://kiro.dev/docs/crew/interfaces/cli-reference/), [configuration](https://kiro.dev/docs/crew/configuration/)
 - [Crew 0.8 release notes](https://kiro.dev/changelog/crew/0-8/) (templates, teams, enrolling a crewmate)
 - [Custom agent configuration reference](https://kiro.dev/docs/custom-agents/configuration-reference/)
-- [KiroCrew issue 10041](https://github.com/kirodotdev/KiroCrew/issues/10041) (permissions need kiro-cli 2.23.0 or newer)
+- Kiro Crew issue 10041 (permissions need kiro-cli 2.23.0 or newer)
 - Crew's installed source, read only: `config/sections.py` (record fields), `cli.py` and `cli_commands.py` (agent create/update/delete), `members.py` (name rules), `agent_files.py` (owned and reserved names), `agents_janitor.py`, `dashboard/handlers/agents.py` (create route).

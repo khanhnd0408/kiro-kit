@@ -162,9 +162,9 @@ Kiro Crew documentation, checked October 14, 2026:
 - [Agent capabilities](https://kiro.dev/docs/crew/capabilities/): [Steering](https://kiro.dev/docs/crew/capabilities/steering/), [Skills](https://kiro.dev/docs/crew/capabilities/skills/), [Agents](https://kiro.dev/docs/crew/capabilities/agents/), [Hooks](https://kiro.dev/docs/crew/capabilities/hooks/)
 - [Task Runner](https://kiro.dev/docs/crew/features/task-runner/), [Workflows](https://kiro.dev/docs/crew/features/workflows/), [Subagents](https://kiro.dev/docs/crew/features/subagents/), [Agent backends](https://kiro.dev/docs/crew/features/agent-backends/)
 - [Configuration](https://kiro.dev/docs/crew/configuration/), [Security](https://kiro.dev/docs/crew/security/), [Troubleshooting](https://kiro.dev/docs/crew/troubleshooting/)
-- [KiroCrew repository](https://github.com/kirodotdev/kirocrew) and its internal spec on [memory, skills and hooks](https://github.com/kirodotdev/kirocrew/blob/main/docs/system-specs/modules/memory-skills-hooks.md)
+- Kiro Crew's own documentation on memory, skills and hooks (the `docs/` folder of the installed package, for example `steering-and-hooks.md` and `skills.md`)
 
 Known issues:
 
-- [KiroCrew #10041: Crew doesn't read permissions.yaml](https://github.com/kirodotdev/KiroCrew/issues/10041)
-- [Kiro #11150: custom agents as sub-agents get no tools](https://github.com/kirodotdev/Kiro/issues/11150)
+- Kiro Crew issue 10041: Crew doesn't read permissions.yaml
+- Kiro issue 11150: custom agents as sub-agents get no tools

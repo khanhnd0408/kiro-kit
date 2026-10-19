@@ -199,6 +199,6 @@ Kiro documentation, checked October 14, 2026:
 
 Known issues:
 
-- [#11150: custom agents as sub-agents get no tools](https://github.com/kirodotdev/Kiro/issues/11150)
-- [#7755: hooks in sub-agents](https://github.com/kirodotdev/Kiro/issues/7755)
-- [#11037: CLI ignores permissions.yaml](https://github.com/kirodotdev/Kiro/issues/11037)
+- Kiro issue 11150: custom agents as sub-agents get no tools
+- Kiro issue 7755: hooks in sub-agents
+- Kiro issue 11037: CLI ignores permissions.yaml
