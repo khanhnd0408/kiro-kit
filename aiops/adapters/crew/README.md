@@ -9,7 +9,7 @@ Crew has no `#` command for loading steering. Instead, you start every review me
 | Crew behavior | What goes wrong if you ignore it | What the kit does |
 |---|---|---|
 | There's no `#name` command. Crew injects `always` steering into every session, and lists `manual`, `auto` and `fileMatch` steering only as pointers. | `#agent-review` doesn't exist, and a manual launcher may never load. | `.kiro/steering/agent-review.md` is a short always-on pointer. It tells the agent to read the method when your message starts with `agent-review:`, or when it runs one of the kit's Task Runner specs. |
-| Each session works in one project directory, set in the dashboard session header or with `project_dir`. | The agent can't see the method if the session points somewhere else. | Setup step 1 sets the project directory. |
+| Each session works in one project directory, set in the dashboard session header, or by the crewmate's workspace folder. | The agent can't see the method if the session points somewhere else. | Setup step 1 sets the project directory. |
 | Sessions compact at 70% of the context (`session.autocompact_pct`). | Long chats lose early details. | Chat mode keeps `_progress.md` and runs one phase per chat. The Task Runner gives every task a fresh session. |
 | The Task Runner (`kirocrew run TASK.md`): <ul><li>plans the spec;</li><li>runs each task in a fresh session, in a git worktree on branch `kirocrew/task/<id>`;</li><li>has an independent reviewer check each diff;</li><li>retries and checkpoints;</li><li>runs independent tasks in parallel, three at a time.</li></ul> | It's a good fit for Phases 2–5, but a worktree only contains committed files. | `crew/TASK-review.md` describes Phases 2–5 as 12 tasks. You commit the kit before running it. REFERENCE_ROOT lives outside the repository, so the worktree can still read it. |
 | Crew Workflows are Python scripts that Crew's own agent writes. The API isn't published, and the Workflows app is opt-in. | A hand-written script would be guesswork. | `crew/workflow-brief.md` is a plain-English brief for Crew to turn into a workflow. It's optional. |
@@ -23,13 +23,13 @@ Crew has no `#` command for loading steering. Instead, you start every review me
 - **Host:** run everything on the machine where Crew's Gateway runs. The project, the kit and `~/.kiro-agent-review/` must all be on that machine.
 - **Crew:** Kiro Crew with the default Kiro CLI backend, signed in (`kiro-cli login`). Check it with `kirocrew doctor`.
 - **Tools:** `python3` and `git` on the Gateway host.
-- **Reference repo:** a clone of [system_prompts_leaks](https://github.com/asgeirtj/system_prompts_leaks).
+- **Reference repo:** a clone of the public `system_prompts_leaks` repository.
 - **Model:** Claude Opus 5.5, picked from the model chip in the composer.
 
 ## 3. Install
 
 ```bash
-git clone https://github.com/asgeirtj/system_prompts_leaks.git   # if you don't have it yet
+git clone <reference-repo-url> system_prompts_leaks   # if you don't have it yet
 ./aiops/install.sh /path/to/your/observability-project --reference-source /path/to/system_prompts_leaks
 ```
 
@@ -53,7 +53,7 @@ Then fill in `docs/agent-review-method/inputs.md`: models in use, tracing, where
 
 ## 4. Configure Crew (one time)
 
-1. **Set the project directory.** Set it in the dashboard session header, or run `kirocrew config set project_dir "/path/to/your/project"`. Check it with `kirocrew config get project_dir`. Chat channels such as Slack and Telegram use this project too.
+1. **Set the project directory.** Pick the project in the dashboard session header. Without a pick, a session starts in the crewmate's workspace folder (`~/.kiro/crew/workspace` for the `default` workspace). There is no `project_dir` setting in Crew 0.8.0: `kirocrew config set project_dir` fails with "Unknown key". For chat channels such as Slack and Telegram, give the crewmate a workspace whose folder is your project (Settings in the dashboard), since they have no session header.
 2. **Set approval.** Under Settings → Security, choose Interactive for Phase 1, so you see every tool call. Keep `agent.sandbox` at `auto` or `strict`.
 3. **Commit the kit on a review branch.** The Task Runner's worktree only contains committed files.
    ```bash
@@ -93,7 +93,7 @@ Then fill in `docs/agent-review-method/inputs.md`: models in use, tracing, where
    ```
 3. If the context fills up, start a new chat with `agent-review: Resume. Read docs/agent-review/_progress.md first and continue from the first unchecked step. Stop at the end of Phase 1.`
 
-The same messages work from Slack, Telegram and the other channels, as long as `project_dir` points at the project.
+The same messages work from Slack, Telegram and the other channels, as long as the crewmate's workspace folder is the project.
 
 ### Phases 2–5, with the Task Runner (recommended)
 

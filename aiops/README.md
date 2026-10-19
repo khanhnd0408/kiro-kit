@@ -12,8 +12,8 @@ The method is the same everywhere. Small adapters fit it to the Kiro surface you
 ## Quick start (Kiro Crew)
 
 ```bash
-git clone https://github.com/asgeirtj/system_prompts_leaks.git        # reference material
-git clone https://github.com/khanhnd0408/kiro-kit.git
+git clone <reference-repo-url> system_prompts_leaks                  # the public reference repository of that name
+git clone <this-repo-url> kiro-kit
 ./kiro-kit/aiops/install.sh /path/to/your/project --reference-source ./system_prompts_leaks
 ```
 
@@ -72,7 +72,7 @@ For the IDE, add `--surface ide` and follow the [IDE guide](adapters/ide/README.
 
 ## Reference material
 
-The method quotes short excerpts from [asgeirtj/system_prompts_leaks](https://github.com/asgeirtj/system_prompts_leaks), which is CC0-licensed. The excerpts were checked against commit `b64ee93`. `install.sh` copies the 34 cited files into `~/.kiro-agent-review/reference` on your machine, outside your project, so they are never committed to it. When that commit exists in your clone, it copies from the commit itself, so every line number matches.
+The method quotes short excerpts from the public `system_prompts_leaks` repository, which is CC0-licensed. The excerpts were checked against commit `b64ee93`. `install.sh` copies the 34 cited files into `~/.kiro-agent-review/reference` on your machine, outside your project, so they are never committed to it. When that commit exists in your clone, it copies from the commit itself, so every line number matches.
 
 ## Uninstall
 

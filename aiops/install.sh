@@ -7,7 +7,7 @@
 #   --surface crew            (default) Kiro Crew: always-on pointer steering, Task Runner specs,
 #                             and hook helpers in ~/.kiro-agent-review/bin/.
 #   --surface ide             Kiro IDE: manual steering (#agent-review), custom agent, v1 hooks, workflows.
-#   --reference-source PATH   a clone of https://github.com/asgeirtj/system_prompts_leaks.
+#   --reference-source PATH   a clone of the public system_prompts_leaks repository.
 #                             Default: $SYSTEM_PROMPTS_LEAKS, then ../system_prompts_leaks next to this
 #                             repository, then ~/Projects/system_prompts_leaks.
 #   --force                   also replace docs/agent-review-method/inputs.md (normally kept).
@@ -64,7 +64,7 @@ if [ -z "$REF_SRC" ]; then
 fi
 if [ -z "$REF_SRC" ] || [ ! -d "$REF_SRC/OpenAI/Codex" ]; then
   echo "error: can't find a system_prompts_leaks clone." >&2
-  echo "  git clone https://github.com/asgeirtj/system_prompts_leaks.git" >&2
+  echo "  git clone <reference-repo-url> system_prompts_leaks" >&2
   echo "  then rerun with --reference-source /path/to/system_prompts_leaks" >&2
   exit 2
 fi
@@ -197,8 +197,9 @@ if [ "$SURFACE" = "crew" ]; then
 cat <<EOF
 
 Installed for Kiro Crew. Next steps (details in $KIT_DIR/adapters/crew/README.md):
-  1. Point Crew at the project: set it in the dashboard session header, or run
-       kirocrew config set project_dir "$TARGET"
+  1. Point Crew at the project: pick it in the dashboard session header
+     (Crew has no project_dir setting; channels use the crewmate's workspace folder).
+     Project: $TARGET
   2. Commit the kit on a review branch. Task Runner worktrees only contain committed files:
        cd "$TARGET" && git checkout -b agent-review
        git add docs/agent-review-method tools/agent_review .kiro/steering/agent-review.md docs/agent-review/.review-mode
