@@ -9,34 +9,35 @@ You need on the new machine:
 - Python 3 (`python3 --version` prints a version).
 - Git.
 
-## Step 1. Get the files onto the machine
+## Step 1. Get the files and install the `crewctl` command
 
-The files must be on the new machine. Either:
-- **Git:** `git clone <your-repo-url> kiro-kit` (the repository must contain the `crewctl/crews/devteam` folder; if it is not pushed yet, push it from the old machine first), or
-- **Copy:** copy the whole `crewctl` folder by USB or `scp`.
+**Get the files.** The whole `kiro-kit` folder must be on the new machine. Either:
+- **Git:** `git clone <your-repo-url> kiro-kit` (the repository must contain `crewctl/crews/devteam`; if it is not pushed yet, push it from the old machine first), or
+- **Copy:** copy the whole `kiro-kit` folder by USB or `scp`. Do not copy the `.venv` or `crewctl/crews/devteam/.crewctl` folders if they exist; they belong to the old machine.
 
-Then go into the folder:
+**Install the command** (once, from the `kiro-kit` folder):
 ```bash
-cd kiro-kit/crewctl
+cd kiro-kit
+./install.sh
 ```
-You should see the folders `crewctl`, `crews`, `docs`, `examples`, `tests`.
+You should see `installed: crewctl 0.1.0`. The script makes a private Python environment in `kiro-kit/.venv`, installs crewctl into it, and links it as `~/.local/bin/crewctl`. It touches nothing else. If it ends by telling you to add a line to your shell profile, do that and open a new terminal, so `crewctl` is found.
 
-Do not copy a `.crewctl` folder from the old machine. It is that machine's notes and must start empty here.
-
-## Step 1b. Install the `crewctl` command (once)
-
-This gives you a short `crewctl` command instead of `crewctl ...`. From the `crewctl` folder:
+Check it:
 ```bash
-python3 -m pip install -e .
+crewctl
 ```
-Use `pipx install -e .` instead if your system Python refuses `pip install` (some Linux systems do), or make a virtual environment first: `python3 -m venv ~/.venvs/crewctl && ~/.venvs/crewctl/bin/pip install -e .` and use `~/.venvs/crewctl/bin/crewctl`. Keep the folder where it is: the `-e` means the command reads the files in place.
+You should see an overview with two groups: **JOB 1** (build the crew) and **JOB 2** (review a project). This guide is JOB 1.
 
-Then tell it which team folder to use, so you do not have to repeat it:
+Keep the `kiro-kit` folder where it is; the command reads the files in place. To remove the command later: `./install.sh --uninstall`.
+
+Without the script (for example on Windows), the same thing by hand: `python3 -m venv .venv`, then `.venv/bin/pip install -e crewctl` (on Windows `.venv\Scripts\pip`), and run `.venv/bin/crewctl`. Or skip installing: every command below also works as `python3 -m crewctl -c crewctl/crews/devteam <command>` from the `kiro-kit` folder.
+
+**Tell it which team folder to use**, so you do not repeat it on every command:
 ```bash
-export CREWCTL_DIR="$PWD/crews/devteam"
-crewctl --version
+export CREWCTL_DIR="$PWD/crewctl/crews/devteam"
+echo "$CREWCTL_DIR"
 ```
-You should see `crewctl 0.1.0`. The `export` only lasts for this terminal; add the line to your shell profile (with the full path) to keep it. If you prefer not to install anything, every command below also works as `python3 -m crewctl -c crews/devteam <command>`.
+This lasts for the current terminal. Add the same line, with the full path written out, to your shell profile to keep it. Run every command below from any folder.
 
 ## Step 2. Make sure Crew has started once
 
@@ -54,7 +55,7 @@ You should see `found` next to both and the line `Nothing to fix.`
 If it says `missing`, follow what it prints. In short:
 1. Start Crew (the desktop app, or the gateway), wait a minute, and run the command again. Crew writes `~/.kiro/agents/kirocrew.json` when its gateway starts.
 2. Run `kirocrew doctor`. A known cause: when Crew cannot find its own `kirocrew` launcher (for example, the gateway runs as a background service whose PATH does not include it), it leaves the entry out. Put `kirocrew` on that service's PATH and restart the gateway.
-3. If the file still does not appear, tell crewctl the command yourself. The command prints a ready-made block. Paste it into `crews/devteam/crewctl.json`, next to `"plan"`. It looks like this (use the real path from `which kirocrew`):
+3. If the file still does not appear, tell crewctl the command yourself. The command prints a ready-made block. Paste it into `$CREWCTL_DIR/crewctl.json`, next to `"plan"`. It looks like this (use the real path from `which kirocrew`):
 ```json
 "crew_server_commands": {
   "core": { "command": "/full/path/to/kirocrew", "args": ["mcp-core"] },
@@ -65,7 +66,7 @@ Run `crewctl crew-servers` again; it should now say `found from crewctl.json`.
 
 ### Or set the team up without Crew's tool servers
 
-If you cannot get them working, you can still create the team. In `crews/devteam/crewctl.json` add:
+If you cannot get them working, you can still create the team. In `$CREWCTL_DIR/crewctl.json` add:
 ```json
 "use_crew_servers": false
 ```
@@ -80,7 +81,7 @@ If `kirocrew` itself is not installed (`kirocrew --version` fails), install Kiro
 
 ## Step 3. Switch to the paid plan
 
-Open `crews/devteam/crewctl.json` and change one word:
+Open `$CREWCTL_DIR/crewctl.json` and change one word:
 ```json
 { "plan": "paid", "kirocrew_bin": "kirocrew", "allow_unknown_models": false }
 ```
@@ -93,7 +94,7 @@ crewctl models
 ```
 Look at the column **IN YOUR CREW LIST**. These names must say yes: `claude-sonnet-5.5`, `claude-opus-5.5`, `claude-sonnet-4.5`, `deepseek-3.2`.
 
-If a name is missing, Crew spells it differently on this machine. Find the real spelling in the Crew dashboard's model picker, then replace it in the files `crews/devteam/*.agent.json` (the `paid_model` line). Run this step again until the names match. The names I used for the Claude 5.5 models were not confirmed on a real paid machine, so this check matters.
+If a name is missing, Crew spells it differently on this machine. Find the real spelling in the Crew dashboard's model picker, then replace it in the files `$CREWCTL_DIR/*.agent.json` (the `paid_model` line). Run this step again until the names match. The names I used for the Claude 5.5 models were not confirmed on a real paid machine, so this check matters.
 
 ## Step 5. Check the config
 
@@ -184,7 +185,7 @@ Use the dashboard chat for each.
 
 ## Changing things later
 
-- Edit a file in `crews/devteam`, then run `plan` to see the change, then `apply`.
+- Edit a file in `$CREWCTL_DIR`, then run `plan` to see the change, then `apply`.
 - `crewctl status` shows one line per crewmate.
 - Remove everything: `crewctl skills destroy`, then `crewctl destroy --delete-records`.
 
@@ -194,7 +195,7 @@ Use the dashboard chat for each.
 |---|---|---|
 | `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet, or left the entry out | Run `crewctl crew-servers` and follow it (Step 2) |
 | `model ... is not available` or a model error in `models` | The model name or your plan does not match | Do Steps 3 and 4 |
-| `exists and was not created by crewctl` (skills) | A skill with that name is already in the folder | Rename the skill in `crews/devteam/skills/<name>.skill.json` (and in the agent files that list it), or remove the old one yourself |
+| `exists and was not created by crewctl` (skills) | A skill with that name is already in the folder | Rename the skill in `$CREWCTL_DIR/skills/<name>.skill.json` (and in the agent files that list it), or remove the old one yourself |
 | `changed outside crewctl` | Someone edited a generated file by hand | Look at the file; if you want the config to win, add `--force` (a backup is kept) |
 | `state is locked` | An earlier run was cut off | Add `--break-lock` if no other crewctl is running |
 | Agents are in `kirocrew agent list` but Crew never picks them | Description and triggers are empty | Step 9 |

@@ -1501,5 +1501,17 @@ class ReviewCommands(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("aiops", out)
 
+
+class InstallerScript(unittest.TestCase):
+    def test_installer_script_is_valid_and_checks_its_arguments(self):
+        import subprocess
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        script = os.path.join(root, "install.sh")
+        self.assertTrue(os.access(script, os.X_OK))
+        self.assertEqual(subprocess.run(["bash", "-n", script]).returncode, 0)
+        result = subprocess.run(["bash", script, "--bogus"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage", result.stderr)
+
 if __name__ == "__main__":
     unittest.main()

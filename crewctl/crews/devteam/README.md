@@ -51,9 +51,8 @@ Step-by-step guide with expected output and troubleshooting: [SETUP.md](SETUP.md
 On a machine where Crew is installed and has started once (it writes `~/.kiro/agents/kirocrew.json`, which crewctl needs to wire the Crew tools):
 
 ```bash
-cd crewctl
-python3 -m pip install -e .                 # once: gives you the short `crewctl` command
-export CREWCTL_DIR="$PWD/crews/devteam"    # the team folder, so you do not repeat -c
+./install.sh                                  # once, from the kiro-kit folder: gives you the `crewctl` command
+export CREWCTL_DIR="$PWD/crewctl/crews/devteam"    # the team folder, so you do not repeat -c
 crewctl validate
 crewctl skills plan          # shows the SKILL.md files
 crewctl skills apply         # writes them to ~/.kiro/crew/skills

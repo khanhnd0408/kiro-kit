@@ -14,7 +14,7 @@ The method is the same everywhere. Small adapters fit it to the Kiro surface you
 ```bash
 git clone <reference-repo-url> system_prompts_leaks                  # the public reference repository of that name
 git clone <this-repo-url> kiro-kit
-cd kiro-kit/crewctl && python3 -m pip install -e . && cd ..          # once: gives you the `crewctl` command
+./kiro-kit/install.sh                                                # once: gives you the `crewctl` command
 crewctl review install /path/to/your/project --reference-source ../system_prompts_leaks
 ```
 

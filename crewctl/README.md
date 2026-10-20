@@ -15,7 +15,7 @@ You write one small JSON file per crewmate. crewctl turns each one into the Kiro
 
 Python 3, standard library only. Tested on 3.12 and 3.13. The code parses as Python 3.8 but has not been run on it.
 
-**Short command (optional).** From this folder run `python3 -m pip install -e .` once (or `pipx install -e .`). You then type `crewctl <command>` instead of `python3 -m crewctl <command>`, and `export CREWCTL_DIR=/path/to/your/config/folder` replaces `-c <folder>` on every call. Keep this folder in place; the `-e` makes the command read the files here. Everything in this README works either way.
+**Short command (optional).** From the repository root run `./install.sh` once (it makes a private environment and links `~/.local/bin/crewctl`). Without the script: `python3 -m pip install -e .` from this folder, or `pipx install -e .`. You then type `crewctl <command>` instead of `python3 -m crewctl <command>`, and `export CREWCTL_DIR=/path/to/your/config/folder` replaces `-c <folder>` on every call. Keep this folder in place; the `-e` makes the command read the files here. Everything in this README works either way.
 
 ## Where it runs, and moving between machines
 
