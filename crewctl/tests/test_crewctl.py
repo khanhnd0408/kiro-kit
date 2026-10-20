@@ -1367,6 +1367,27 @@ class CrewServerFallback(unittest.TestCase):
         written = json.load(open(os.path.join(self.agents, "a.json")))
         self.assertEqual(written["mcpServers"]["kirocrew-core"]["command"], "/from/setting")
 
+    def test_crew_servers_can_be_switched_off(self):
+        with open(os.path.join(self.config, "a.agent.json"), "w") as handle:
+            json.dump({"name": "a", "prompt": "p", "tools": ["fs_read", "@kirocrew-core/skill_search"],
+                       "allowed_tools": ["fs_read", "@kirocrew-core/skill_search"],
+                       "crew_servers": {"core": {"tools": ["spawn_run", "wait"]}}, "skills": ["~/s/SKILL.md"]}, handle)
+        self.write_settings({"use_crew_servers": False})
+        code, out = self.run_cli("apply", "-y")
+        self.assertEqual(code, 0, out)
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertEqual(written["tools"], ["fs_read"])
+        self.assertEqual(written["allowedTools"], ["fs_read"])
+        self.assertNotIn("kirocrew-core", written.get("mcpServers", {}))
+        self.assertIn("skill://~/s/SKILL.md", written["resources"])
+        self.assertIn("cannot start or watch other crewmates", out)
+
+    def test_use_crew_servers_must_be_a_boolean(self):
+        self.write_settings({"use_crew_servers": "no"})
+        code, out = self.run_cli("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("use_crew_servers", out)
+
     def test_bad_setting_is_rejected(self):
         for bad in ("text", {"nope": {"command": "x", "args": []}}, {"core": {"command": "", "args": []}},
                     {"core": {"command": "x", "args": "mcp-core"}}, {"core": {"command": "x", "args": [], "env": {"A": "b"}}}):

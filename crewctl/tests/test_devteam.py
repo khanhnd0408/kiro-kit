@@ -279,6 +279,21 @@ class Pack(Tmp):
                 code = cli.main(["--no-color", "-c", os.path.join(other, "p"), "--agents-dir", self.agents, "--crew-home", self.tmp, "validate"])
             self.assertEqual(code, 0, buffer.getvalue())
 
+    def test_whole_team_builds_without_crew_servers_and_nothing_references_them(self):
+        os.remove(os.path.join(self.agents, "kirocrew.json"))
+        with open(os.path.join(self.pack, "crewctl.json"), "w") as handle:
+            json.dump({"plan": "free", "use_crew_servers": False}, handle)
+        code, out = self.cli("apply", "-y")
+        self.assertEqual(code, 0, out)
+        names = [f for f in os.listdir(self.agents) if f.endswith("-agent.json")]
+        self.assertEqual(len(names), 10)
+        for name in names:
+            data = json.load(open(os.path.join(self.agents, name)))
+            self.assertFalse([t for t in data["tools"] + data.get("allowedTools", []) if t.startswith("@kirocrew-")], name)
+            self.assertNotIn("kirocrew-core", data.get("mcpServers", {}), name)
+        self.assertIn("orchestrator-agent", out)
+        self.assertIn("cannot start or watch other crewmates", out)
+
     def test_every_agent_skill_exists_and_agents_do_not_write_where_they_should_not(self):
         known = self.specs()
         for name in os.listdir(PACK):

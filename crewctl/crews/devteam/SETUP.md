@@ -48,6 +48,19 @@ If it says `missing`, follow what it prints. In short:
 ```
 Run `python3 -m crewctl crew-servers` again; it should now say `found from crewctl.json`.
 
+### Or set the team up without Crew's tool servers
+
+If you cannot get them working, you can still create the team. In `crews/devteam/crewctl.json` add:
+```json
+"use_crew_servers": false
+```
+crewctl then leaves `kirocrew-core` and every `@kirocrew-core/...` tool name out of all ten agent files, and `crew-servers` is no longer needed. `validate` and `plan` will show a warning for each crewmate that loses tools.
+
+What you lose:
+- **`orchestrator-agent` cannot start or watch other crewmates**, so the check loop does not exist. It becomes an adviser: its prompt tells it to say so and to give you a plan of which crewmate to open, with the brief to paste. You then open each specialist yourself.
+- **The nine specialists lose `skill_search`.** Their skills are still listed as plain skill files in each agent file, which Kiro may load by itself. I have not tested that, so check by asking a specialist which skills it has.
+Switch it back to `true` (or delete the line) and run `plan` then `apply` when the servers work.
+
 If `kirocrew` itself is not installed (`kirocrew --version` fails), install Kiro Crew first; nothing else here works without it.
 
 ## Step 3. Switch to the paid plan

@@ -113,7 +113,7 @@ Only `name`, `tools` and a prompt are required. Start from `templates/agent.temp
 
 Values in `crew/_defaults.json` fill in any field an agent file leaves out. Files whose names start with `_` are ignored.
 
-`crew/crewctl.json` has the settings: `"plan"` (`"free"` or `"paid"`; on `"free"`, models that need a paid plan are errors and `paid_model` is ignored), `kirocrew_bin`, `allow_unknown_models`, `skills_dir`, `project_skills_dir`, and `crew_server_commands`. The last one is a fallback: when Crew does not list its `kirocrew-core` / `kirocrew-cron` servers in `~/.kiro/agents/kirocrew.json`, `python3 -m crewctl crew-servers` explains why and prints the block to paste in. On any plan, `validate` warns if a model is not in that machine's own Crew model list.
+`crew/crewctl.json` has the settings: `"plan"` (`"free"` or `"paid"`; on `"free"`, models that need a paid plan are errors and `paid_model` is ignored), `kirocrew_bin`, `allow_unknown_models`, `skills_dir`, `project_skills_dir`, `crew_server_commands` and `use_crew_servers`. `use_crew_servers: false` builds every agent without Crew's own tool servers (no spawn tools, no `skill_search`); crewctl warns about what each crewmate loses. `crew_server_commands` is a fallback: when Crew does not list its `kirocrew-core` / `kirocrew-cron` servers in `~/.kiro/agents/kirocrew.json`, `python3 -m crewctl crew-servers` explains why and prints the block to paste in. On any plan, `validate` warns if a model is not in that machine's own Crew model list.
 
 ## Commands
 

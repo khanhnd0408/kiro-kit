@@ -41,7 +41,7 @@ MANAGED_KIRO_KEYS = frozenset({"name", "description", "model", "prompt", "tools"
 CREW_SERVERS = {"core": "kirocrew-core", "cron": "kirocrew-cron"}
 CREW_SERVER_OPTIONS = ("disabledTools", "tools")
 TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,60}\Z")
-SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir", "crew_server_commands")
+SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir", "crew_server_commands", "use_crew_servers")
 
 SECRET_PATTERNS = [
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
@@ -74,6 +74,7 @@ class Settings:
     allow_unknown_models: bool = False
     skills_dir: str = ""            # where destination "crew" skills go; default <crew_home>/skills
     project_skills_dir: str = ""    # where destination "project" skills go; relative paths start at the config folder
+    use_crew_servers: bool = True   # false: leave out Crew's own tool servers (and the @kirocrew-* tool names) from every agent file
     crew_server_commands: dict = field(default_factory=dict)   # {"core": {"command": ..., "args": [...]}}: used when kirocrew.json has none
 
 
@@ -186,6 +187,9 @@ def load_settings(config_dir, problems, overrides=None):
         problems.append(Problem("error", "crewctl.json", f"plan must be \"free\" or \"paid\", not {settings.plan!r}"))
         settings.plan = "free"
     settings.crew_server_commands = _check_server_commands(settings.crew_server_commands, problems)
+    if not isinstance(settings.use_crew_servers, bool):
+        problems.append(Problem("error", "crewctl.json", "use_crew_servers must be true or false"))
+        settings.use_crew_servers = True
     if not isinstance(settings.allow_unknown_models, bool):
         problems.append(Problem("error", "crewctl.json", "allow_unknown_models must be true or false"))
         settings.allow_unknown_models = False
@@ -232,6 +236,18 @@ def _discover(config_dir):
             if name.endswith(".agent.json") and not name.startswith("_"):
                 found.append(os.path.join(folder, name))
     return found
+
+
+def _note_skipped_crew_servers(wanted, where, problems):
+    """use_crew_servers is false: say what this crewmate loses so nobody is surprised later."""
+    names = set()
+    for short, opts in (wanted.items() if isinstance(wanted, dict) else [(w, {}) for w in wanted if isinstance(w, str)]):
+        tools = opts.get("tools", []) if isinstance(opts, dict) else []
+        names.update(tools or [f"all {short} tools"])
+    lost = ", ".join(sorted(names))
+    spawns = any(n.startswith("spawn_") or n == "wait" for n in names)
+    problems.append(Problem("warn", where, f"use_crew_servers is false, so this crewmate gets none of Crew's tools ({lost})."
+                                           + (" It cannot start or watch other crewmates, so it can only answer by itself." if spawns else "")))
 
 
 def _is_str_list(value):
@@ -453,8 +469,10 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
             problems.append(Problem("error", where, "skills must be a list of paths or skill:// URIs, "
                                                     "for example [\".kiro/skills/log-triage/SKILL.md\"]"))
     wanted = data.get("crew_servers")
-    if wanted:
+    if wanted and settings.use_crew_servers:
         _add_crew_servers(spec, wanted, where, problems, crew_lookup)
+    elif wanted:
+        _note_skipped_crew_servers(wanted, where, problems)
     if data.get("permissions") not in (None, {}):          # {} means "not set"
         _check_permissions(data["permissions"], where, problems)
         if isinstance(data["permissions"], dict):
@@ -506,6 +524,9 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
     for spot in _find_secrets(scanned) + _find_secrets(spec.prompt, "prompt"):
         problems.append(Problem("error", where, f"{spot} looks like a real credential. Keep secrets out of config files "
                                                 "(they get committed); pass them through the environment instead."))
+    if not settings.use_crew_servers:     # also drop tool names that only make sense with those servers
+        spec.tools = [t for t in spec.tools if not t.startswith("@kirocrew-")]
+        spec.allowed_tools = [t for t in spec.allowed_tools if not t.startswith("@kirocrew-")]
     return spec
 
 
