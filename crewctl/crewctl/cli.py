@@ -5,6 +5,7 @@ import dataclasses
 import difflib
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -663,29 +664,35 @@ def _set_workspace_in_file(path, workspace):
 
 
 def _workspace_assign(ctx, args, out):
-    """Point an existing (or not yet registered) crewmate at a workspace: edit its config file, then update its Crew record."""
+    """Point one or more crewmates at a workspace: edit their config files, then update their Crew records."""
     import time
     from . import workspaces as ws
     from .engine import run_commands
     from .state import backup_file
     from .util import atomic_write
     view = ctx.view
-    spec = next((s for s in ctx.specs if s.name == args.crewmate), None)
-    if spec is None:
-        print(out.red(f"unknown crewmate '{args.crewmate}'. In the config: {', '.join(s.name for s in ctx.specs) or 'none'}"))
-        return 1
+    by_name = {s.name: s for s in ctx.specs}
     interactive = sys.stdin.isatty() and not args.yes
-    target = args.workspace_name
-    try:
-        if not target:
-            if not interactive:
-                print(out.red("give the workspace name: crewctl workspace assign CREWMATE WORKSPACE"))
-                return 1
-            print(f"Workspaces in Crew: {', '.join(sorted(set(view.workspaces) | {view.default_workspace}))}")
-            target = _ask(f"Workspace for {spec.name}", spec.workspace, lambda v: "" if ws.NAME_RE.match(v) else "use letters, digits, hyphens and underscores")
-    except Cancelled:
-        print("\nCancelled.")
+    names = list(dict.fromkeys(args.crewmates))
+    if args.all:
+        names = [s.name for s in ctx.specs]
+    elif not names:
+        if not interactive:
+            print(out.red("name the crewmates (crewctl workspace assign WORKSPACE CREWMATE [CREWMATE ...]) or use --all"))
+            return 1
+        print(f"Crewmates in the config: {', '.join(by_name) or 'none'}")
+        try:
+            answer = _ask("Which crewmates? (names separated by spaces or commas, or 'all')", "",
+                          lambda v: "" if v else "give at least one name")
+        except Cancelled:
+            print("\nCancelled.")
+            return 1
+        names = list(by_name) if answer.strip().lower() == "all" else [n for n in re.split(r"[\s,]+", answer) if n]
+    unknown = [n for n in names if n not in by_name]
+    if unknown or not names:
+        print(out.red(f"unknown crewmate(s): {', '.join(unknown) or '(none given)'}. In the config: {', '.join(by_name) or 'none'}"))
         return 1
+    target = args.workspace_name
     if not ws.NAME_RE.match(target):
         print(out.red(f"'{target}' is not a valid workspace name (letters, digits, hyphens and underscores)."))
         return 1
@@ -694,33 +701,40 @@ def _workspace_assign(ctx, args, out):
         if not interactive and not args.yes:
             print(out.red(f"Create it first (`crewctl workspace create {target}`), or add --yes to create it with the default folder."))
             return 1
-        hint = spec.workspace_dir if target == spec.workspace else ""
+        hint = next((by_name[n].workspace_dir for n in names if by_name[n].workspace == target and by_name[n].workspace_dir), "")
         created = _create_workspace_flow(ctx, args, out, target, hint, interactive, args.yes, "")
         if not created:
             return 1
         target = created
-    if target != spec.workspace:
-        print(f"\n{os.path.basename(spec.source_file)}: workspace {out.bold(spec.workspace)} -> {out.bold(target)}")
-        if interactive and input("Change the config file? Type 'yes' to continue: ").strip() != "yes":
+    changing = [n for n in names if by_name[n].workspace != target]
+    print(f"\nWorkspace {out.bold(target)} for {len(names)} crewmate(s):")
+    for name in names:
+        current = by_name[name].workspace
+        print(f"  {name:<28} {current} -> {target}" if current != target else f"  {name:<28} already {target}")
+    if changing:
+        if interactive and input(f"Change {len(changing)} config file(s)? Type 'yes' to continue: ").strip() != "yes":
             print("Skipped.")
             return 1
-        new_text = _set_workspace_in_file(spec.source_file, target)
-        backup = backup_file(ctx.config_dir, time.strftime("%Y%m%d-%H%M%S"), spec.source_file, os.path.basename(spec.source_file))
-        atomic_write(spec.source_file, new_text.encode("utf-8"), mode=0o644)
-        print(f"Updated {_tilde(spec.source_file)} (a copy of the old file is in {_tilde(backup)}).")
-    else:
-        print(f"{spec.name} already uses workspace '{target}' in the config.")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for name in changing:
+            spec = by_name[name]
+            new_text = _set_workspace_in_file(spec.source_file, target)
+            backup_file(ctx.config_dir, stamp, spec.source_file, os.path.basename(spec.source_file))
+            atomic_write(spec.source_file, new_text.encode("utf-8"), mode=0o644)
+        print(f"Updated {len(changing)} file(s). The old versions are in {_tilde(os.path.join(ctx.config_dir, '.crewctl', 'backups', stamp))}.")
     fresh = build_context(ctx.config_dir, _overrides(args))
-    action = next((r for r in build_plan(fresh, {spec.name}).registrations if r.name == spec.name), None)
-    if action is None or not action.commands:
-        print(out.green(f"Crew's record for {spec.name} already matches."))
-        return 0
-    if action.kind == "register":
-        print(out.yellow(f"{spec.name} is not in Crew yet. Create it with `crewctl register --run` (it will use workspace '{target}')."))
+    actions = [r for r in build_plan(fresh, set(names)).registrations if r.name in names]
+    todo = [r for r in actions if r.kind == "update" and r.commands]
+    not_in_crew = [r.name for r in actions if r.kind == "register"]
+    if not_in_crew:
+        print(out.yellow(f"Not in Crew yet (create them with `crewctl register --run`; they will use '{target}'): {', '.join(not_in_crew)}."))
+    if not todo:
+        print(out.green("Crew's records already match."))
         return 0
     binary = fresh.settings.kirocrew_bin
-    print("To update the crewmate in Crew:")
-    for argv in action.commands:
+    commands = [argv for r in todo for argv in r.commands]
+    print("To update the crewmates in Crew:")
+    for argv in commands:
         print(f"  {command_line(binary, argv)}")
     if interactive and input("Run these now? Type 'yes' to continue: ").strip() != "yes":
         print("Not run. `crewctl register --run` does the same later.")
@@ -729,13 +743,12 @@ def _workspace_assign(ctx, args, out):
         print("Run `crewctl register --run`, or repeat this command with --yes.")
         return 0
     try:
-        run_commands(binary, action.commands, print)
+        run_commands(binary, commands, print)
     except ApplyBlocked as error:
         print(out.red(str(error)))
         return 1
-    print(out.green(f"{spec.name} now works in workspace '{target}'."))
+    print(out.green(f"{len(todo)} crewmate(s) now work in workspace '{target}'."))
     return 0
-
 
 def cmd_plan(args):
     out = _out(args)
@@ -974,9 +987,10 @@ def build_parser():
     q = wsub.add_parser("check", help="find workspaces the config uses but Crew lacks, and create them (asks for the details)")
     q.add_argument("-y", "--yes", action="store_true", help="do not ask: create each missing workspace with the default folder name")
     q.add_argument("--copy-from", metavar="NAME", help="with --yes: fill the new workspace with the files of this existing workspace")
-    q = wsub.add_parser("assign", help="set the workspace of an existing crewmate: edits its config file and updates its Crew record")
-    q.add_argument("crewmate", help="the crewmate (its name in the config)")
-    q.add_argument("workspace_name", nargs="?", metavar="WORKSPACE", help="the workspace; asked for when left out")
+    q = wsub.add_parser("assign", help="set the workspace of existing crewmates: edits their config files and updates their Crew records")
+    q.add_argument("workspace_name", metavar="WORKSPACE", help="the workspace (created first if it does not exist)")
+    q.add_argument("crewmates", nargs="*", metavar="CREWMATE", help="one or more crewmates; asked for when left out")
+    q.add_argument("--all", action="store_true", help="every crewmate in the config")
     q.add_argument("-y", "--yes", action="store_true", help="do not ask; create the workspace with the default folder if it is missing")
     q = wsub.add_parser("create", help="create one workspace")
     q.add_argument("name", help="workspace name (letters, digits, hyphens, underscores)")

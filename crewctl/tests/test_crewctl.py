@@ -1898,12 +1898,17 @@ class WorkspaceCommands(unittest.TestCase):
         action = next(r for r in engine.build_plan(env2.ctx()).registrations if r.name == "b")
         self.assertEqual(action.commands, [["agent", "update", "b", "--workspace", "ops"]])
 
-    def assign_world(self):
-        env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
-                                     "a": {"kiro_agent": "a", "workspace": "default", "description": "d", "triggers": "t"}})
-        env.agent("a")
-        env.agent("b")
+    def assign_world(self, names=("a", "b", "c")):
+        records = {"default": {"kiro_agent": "kirocrew"}}
+        records["a"] = {"kiro_agent": "a", "workspace": "default", "description": "d", "triggers": "t"}
+        records["b"] = {"kiro_agent": "b", "workspace": "default", "description": "d", "triggers": "t"}
+        env = self.make(crew_agents=records)
+        for name in names:
+            env.agent(name)            # "c" is in the config but not registered in Crew
         return env
+
+    def workspace_of(self, env, name):
+        return json.load(open(os.path.join(env.cfg, f"{name}.agent.json"))).get("workspace")
 
     def test_assign_updates_the_config_file_and_the_crew_record(self):
         env = self.assign_world()
@@ -1911,7 +1916,7 @@ class WorkspaceCommands(unittest.TestCase):
         before = json.load(open(path))
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text = env.run("workspace", "assign", "a", "ops", "--yes")
+            code, text = env.run("workspace", "assign", "ops", "a", "--yes")
         self.assertEqual(code, 0, text)
         after = json.load(open(path))
         self.assertEqual(after["workspace"], "ops")
@@ -1919,65 +1924,99 @@ class WorkspaceCommands(unittest.TestCase):
         self.assertEqual(calls, ["agent update a --workspace ops"])
         backups = os.path.join(env.cfg, ".crewctl", "backups")
         self.assertTrue(any(f == "a.agent.json" for _, _, files in os.walk(backups) for f in files))
-        self.assertIn("now works in workspace 'ops'", text)
+        self.assertIn("1 crewmate(s) now work in workspace 'ops'", text)
 
-    def test_assign_to_a_crewmate_that_is_not_in_crew_yet_only_edits_the_file(self):
+    def test_assign_several_crewmates_at_once(self):
         env = self.assign_world()
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text = env.run("workspace", "assign", "b", "ops", "--yes")
+            code, text = env.run("workspace", "assign", "ops", "a", "b", "c", "--yes")
         self.assertEqual(code, 0, text)
-        self.assertEqual(json.load(open(os.path.join(env.cfg, "b.agent.json")))["workspace"], "ops")
-        self.assertEqual(calls, [])
-        self.assertIn("is not in Crew yet", text)
+        self.assertEqual([self.workspace_of(env, n) for n in "abc"], ["ops", "ops", "ops"])
+        self.assertEqual(calls, ["agent update a --workspace ops", "agent update b --workspace ops"])    # c is not in Crew yet
+        self.assertIn("Not in Crew yet", text)
+        self.assertIn("c", text.split("Not in Crew yet")[1])
+        self.assertIn("2 crewmate(s) now work in workspace 'ops'", text)
 
-    def test_assign_to_a_missing_workspace_creates_it_with_yes_and_refuses_without(self):
+    def test_assign_all_and_skipping_those_already_there(self):
         env = self.assign_world()
-        code, text = env.run("workspace", "assign", "a", "logs")                      # no terminal, no --yes
+        env.agent("a", workspace="ops")
+        calls = []
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text = env.run("workspace", "assign", "ops", "--all", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertIn("a                            already ops", text)
+        self.assertEqual([self.workspace_of(env, n) for n in "abc"], ["ops", "ops", "ops"])
+        self.assertIn("agent update b --workspace ops", calls)
+
+    def test_assign_to_a_missing_workspace_creates_it_once_with_yes_and_refuses_without(self):
+        env = self.assign_world()
+        code, text = env.run("workspace", "assign", "logs", "a", "b")                  # no terminal, no --yes
         self.assertEqual(code, 1)
         self.assertIn("Create it first", text)
-        self.assertEqual(json.load(open(os.path.join(env.cfg, "a.agent.json"))).get("workspace"), None)
+        self.assertEqual(self.workspace_of(env, "a"), None)
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text = env.run("workspace", "assign", "a", "logs", "-y")
+            code, text = env.run("workspace", "assign", "logs", "a", "b", "-y")
         self.assertEqual(code, 0, text)
-        self.assertEqual(calls, ["workspace create --name logs --dir workspace-logs", "agent update a --workspace logs"])
+        self.assertEqual(calls, ["workspace create --name logs --dir workspace-logs",
+                                 "agent update a --workspace logs", "agent update b --workspace logs"])
 
-    def test_assign_asks_which_workspace_when_none_is_given(self):
+    def test_assign_asks_which_crewmates_when_none_are_given(self):
         env = self.assign_world()
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text, asked = self.interactive(env, ["bad name!", "ops", "yes", "yes"], "workspace", "assign", "a")
+            code, text, asked = self.interactive(env, ["", "a, b", "yes", "yes"], "workspace", "assign", "ops")
         self.assertEqual(code, 0, text)
-        self.assertIn("Workspace for a", asked[0])
-        self.assertIn("use letters, digits", text)
-        self.assertEqual(calls, ["agent update a --workspace ops"])
+        self.assertIn("Which crewmates?", asked[0])
+        self.assertIn("give at least one name", text)
+        self.assertEqual(calls, ["agent update a --workspace ops", "agent update b --workspace ops"])
+        calls.clear()
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text, _ = self.interactive(env, ["all", "yes", "yes"], "workspace", "assign", "default")
+        self.assertEqual(code, 0, text)
+        # c never named a workspace (it inherits "default"), so there is nothing to edit in its file
+        self.assertEqual([self.workspace_of(env, n) for n in "abc"], ["default", "default", None])
 
     def test_assign_declined_changes_nothing(self):
         env = self.assign_world()
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text, _ = self.interactive(env, ["no"], "workspace", "assign", "a", "ops")
+            code, text, _ = self.interactive(env, ["no"], "workspace", "assign", "ops", "a", "b")
         self.assertEqual(code, 1)
-        self.assertEqual(json.load(open(os.path.join(env.cfg, "a.agent.json"))).get("workspace"), None)
+        self.assertEqual([self.workspace_of(env, n) for n in "ab"], [None, None])
         self.assertEqual(calls, [])
 
     def test_assign_errors(self):
         env = self.assign_world()
-        for argv, message in ((("zzz", "ops", "-y"), "unknown crewmate 'zzz'"), (("a", "bad name!", "-y"), "not a valid workspace name"),
-                              (("a",), "give the workspace name")):
+        for argv, message in ((("ops", "zzz", "-y"), "unknown crewmate(s): zzz"), (("ops", "a", "zzz", "-y"), "unknown crewmate(s): zzz"),
+                              (("bad name!", "a", "-y"), "not a valid workspace name"), (("ops",), "name the crewmates")):
             code, text = env.run("workspace", "assign", *argv)
             self.assertEqual(code, 1, argv)
             self.assertIn(message, text)
+        self.assertEqual([self.workspace_of(env, n) for n in "ab"], [None, None])      # nothing was edited on an error
 
     def test_assign_same_workspace_is_a_no_op(self):
         env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
                                      "a": {"kiro_agent": "a", "workspace": "ops", "description": "d", "triggers": "t"}})
         env.agent("a", workspace="ops")
-        code, text = env.run("workspace", "assign", "a", "ops", "--yes")
+        code, text = env.run("workspace", "assign", "ops", "a", "--yes")
         self.assertEqual(code, 0, text)
-        self.assertIn("already uses workspace 'ops'", text)
-        self.assertIn("already matches", text)
+        self.assertIn("already ops", text)
+        self.assertIn("already match", text)
+
+    def test_register_updates_every_crewmate_whose_record_differs_in_one_run(self):
+        env = self.assign_world()
+        for name in "abc":
+            env.agent(name, workspace="ops", description="new")
+        calls = []
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text = env.run("register", "--run", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertIn("agent update a --workspace ops", calls)
+        self.assertIn("agent update b --workspace ops", calls)
+        self.assertIn("agent create --name c --kiro-agent c --workspace ops", calls)
+        self.assertIn('config set agents.a.description "new"', calls)
 
     def test_a_failing_kirocrew_is_reported_and_check_exits_1(self):
         env = self.make()

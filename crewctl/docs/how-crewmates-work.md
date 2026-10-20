@@ -54,7 +54,7 @@ The record has these fields (from Crew's `KiroCrewAgentConfig`):
 | Field | Meaning |
 |---|---|
 | `kiro_agent` | The agent file to boot. Required when you create a crewmate. |
-| `workspace` | A named workspace from the `workspaces` section. Default `default`. Crew silently falls back to the default workspace when the name does not exist, so crewctl treats an unknown workspace as an error and offers `crewctl workspace check` to create it, and `crewctl workspace assign` to move an existing crewmate (`kirocrew agent update NAME --workspace W`) (`kirocrew workspace create --name N --dir FOLDER [--copy-from EXISTING]`; the folder is relative to `~/.kiro/crew`, and `--copy-from` copies the files of the existing workspace's folder). |
+| `workspace` | A named workspace from the `workspaces` section. Default `default`. Crew silently falls back to the default workspace when the name does not exist, so crewctl treats an unknown workspace as an error and offers `crewctl workspace check` to create it, and `crewctl workspace assign WORKSPACE CREWMATE...` to move existing crewmates (`kirocrew agent update NAME --workspace W` for each) (`kirocrew workspace create --name N --dir FOLDER [--copy-from EXISTING]`; the folder is relative to `~/.kiro/crew`, and `--copy-from` copies the files of the existing workspace's folder). |
 | `memory_store` | Created automatically for each new crewmate. It cannot be changed or shared later. |
 | `member_id` | Assigned by Crew. Never edit it. |
 | `display_name` | The label the dashboard shows. The `name` stays the real identity. |
