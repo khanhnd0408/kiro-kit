@@ -390,7 +390,7 @@ class Pack(Tmp):
             self.assertTrue(prompt.rstrip().endswith(language.splitlines()[-1]), f"{name}: language rules must come last")
             self.assertNotIn("user's language", prompt, name)
         for needle in ("Think, plan and reason in English only", "Vietnamese is for the person only", 'begins with "SUBAGENT TASK"',
-                       "never use ask_question"):
+                       "never use ask_question", "Self-check before every tool call"):
             self.assertIn(needle, language)
 
     def test_orchestrator_briefs_specialists_in_english_and_reports_in_vietnamese(self):
@@ -399,6 +399,8 @@ class Pack(Tmp):
         self.assertIn("Final report to the user, in Vietnamese", prompt)
         self.assertIn("ask_question tool (header, question and option text in Vietnamese)", prompt)
         self.assertIn("progress lines in the loop below stay English", prompt)
+        self.assertIn("a brief that contains Vietnamese is wrong", prompt)
+        self.assertIn("spawn_run, spawn_continue, spawn_steer or monitor_start", prompt)
 
     def test_agents_that_ask_the_user_can_use_the_question_card(self):
         for name in ("orchestrator-agent", "backend-architecture-agent", "spec-agent"):

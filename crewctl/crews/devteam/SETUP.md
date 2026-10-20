@@ -229,7 +229,15 @@ cd kiro-kit && git pull
    crewctl register --run    # updates the Crew records: description, triggers, workspace
    ```
    `apply` stops if you edited a generated agent file by hand; read the message, and use `--force` only if you want the config to win (a backup is kept).
-3. **Start a new chat** with each crewmate. A conversation that is already open keeps the prompt it started with.
+3. **Check that the installed files are the new ones** (each of the first three commands must print nothing; the last prints at least one line):
+   ```bash
+   cd ~/.kiro/agents
+   grep -L "Self-check before every tool call" *-agent.json          # agent files without the language self-check
+   grep -l  "@kirocrew-core/wait" *-agent.json                        # agent files that still offer the wait tool
+   grep -L  '"disabledTools"' *-agent.json                            # agent files that do not switch wait off
+   grep -c  "SUBAGENT TASK from orchestrator-agent" orchestrator-agent.json
+   ```
+4. **Start a new chat** with each crewmate. A conversation that is already open keeps the prompt it started with.
 
 What the two latest updates change for you: every prompt now ends with the language rules (English inside, Vietnamese only for the final answer and the questions to you), and the orchestrator watches subagents with Crew's monitor loop instead of the `wait` tool. Its agent file loses the `wait` tool and gains `monitor_start`, `monitor_update`, `monitor_stop` and `monitor_inspect`, so `crewctl plan` will show that change.
 
