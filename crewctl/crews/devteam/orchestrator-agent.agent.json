@@ -5,7 +5,6 @@
   "triggers": "Use for any task that needs more than one specialist, a long-running job that must be supervised, or when it is unclear which crewmate should start.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-sonnet-5.5",
-  "prompt_file": "prompts/orchestrator-agent.md",
   "tools": [
     "fs_read",
     "grep",
@@ -23,7 +22,8 @@
     "@kirocrew-core/spawn_steer",
     "@kirocrew-core/spawn_continue",
     "@kirocrew-core/spawn_release",
-    "@kirocrew-core/wait"
+    "@kirocrew-core/wait",
+    "@kirocrew-core/ask_question"
   ],
   "crew_servers": {
     "core": {
@@ -34,8 +34,13 @@
         "spawn_steer",
         "spawn_continue",
         "spawn_release",
-        "wait"
+        "wait",
+        "ask_question"
       ]
     }
-  }
+  },
+  "prompt_files": [
+    "prompts/orchestrator-agent.md",
+    "prompts/_language.md"
+  ]
 }

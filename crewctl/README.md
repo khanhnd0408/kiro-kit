@@ -110,14 +110,14 @@ Only `name`, `tools` and a prompt are required. Start from `templates/agent.temp
 | `name` | crew record and agent file name | Cannot be `default`. Add `kiro_agent` if the name has spaces. |
 | `model` | agent file | Used on the free plan. `crewctl models` lists the ids. Rejected if your plan can't use it. |
 | `paid_model` | agent file | Optional. Used instead of `model` when `crewctl.json` says `"plan": "paid"`. |
-| `prompt` or `prompt_file` | agent file | Exactly one. A file must be inside the config folder. |
+| `prompt`, `prompt_file` or `prompt_files` | agent file | Exactly one. `prompt_files` is a list of files joined in order with a blank line between them, so shared blocks (working rules, language rules) live in one place. Files must be inside the config folder. |
 | `tools` | agent file | Required. There is no default; `[]` means none. |
 | `allowed_tools`, `mcp_servers`, `include_mcp_json`, `resources`, `permissions`, `hooks` | agent file | Optional. Details in [docs/tools-skills-mcp.md](docs/tools-skills-mcp.md). |
 | `skills` | agent file (`resources`) | Optional. Paths to `SKILL.md` files; each becomes a `skill://` entry. |
 | `crew_servers` | agent file | Optional. `["core"]` lets a crewmate spawn others and use Crew memory; `["cron"]` adds schedules. crewctl finds the command on the machine it runs on. |
 | `extra_agent_fields` | agent file | Any other key you want copied through. |
 | `display_name`, `description`, `triggers`, `reasoning_effort`, `session_color`, `starred` | crew record | Set by `register --run`, which calls `kirocrew config set agents.<name>.<field>`. A name containing a dot cannot be written that way and is left for the dashboard. |
-| `workspace`, `workspace_dir` | crew record | The Crew workspace to work in. |
+| `workspace`, `workspace_dir` | crew record | The Crew workspace to work in. It must already exist in Crew: `validate`, `plan`, `apply` and `register` stop with an error if it does not (Crew itself would quietly use the default workspace instead). Create it with `crewctl workspace check` (asks for the name, the folder under `~/.kiro/crew`, and optionally a workspace to copy the files from) or `crewctl workspace create NAME`. `workspace_dir` is only the suggested folder name for `check`. |
 
 Values in `crew/_defaults.json` fill in any field an agent file leaves out. Files whose names start with `_` are ignored.
 

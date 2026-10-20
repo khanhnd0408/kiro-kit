@@ -670,12 +670,15 @@ class Registration(unittest.TestCase):
         self.assertEqual(commands, [])
         self.assertEqual(left, {"description": "d", "starred": True, "other": 1})
 
-    def test_missing_workspace_is_created_first(self):
+    def test_missing_workspace_is_an_error_and_register_never_creates_one(self):
         env = self.make()
         env.agent("a", workspace="logs", workspace_dir="workspace-logs")
-        action = self.reg(env, "a")
-        self.assertEqual(action.commands[0], ["workspace", "create", "--name", "logs", "--dir", "workspace-logs"])
-        self.assertEqual(action.commands[1][:3], ["agent", "create", "--name"])
+        for command in ("validate", "plan", "register"):
+            code, text = env.run(command)
+            self.assertEqual(code, 1, (command, text))
+            self.assertIn("workspace 'logs' does not exist in Crew", text)
+            self.assertIn("crewctl workspace check", text)
+        self.assertEqual(engine.workspace_problems(env.ctx().specs, env.ctx().view)[0].level, "error")
 
     def test_existing_workspace_is_not_recreated(self):
         env = self.make(workspaces={"default": {"dir": "workspace"}, "logs": {"dir": "workspace-logs"}})
@@ -683,6 +686,7 @@ class Registration(unittest.TestCase):
         action = self.reg(env, "a")
         self.assertEqual(action.commands[0][:2], ["agent", "create"])
         self.assertNotIn(["workspace", "create"], [c[:2] for c in action.commands])
+        self.assertEqual(engine.workspace_problems(env.ctx().specs, env.ctx().view), [])
 
     def test_matching_record_is_in_sync(self):
         env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
@@ -753,7 +757,7 @@ class Registration(unittest.TestCase):
 
     def test_register_run_executes_the_commands_after_confirmation(self):
         env = self.make()
-        env.agent("a", workspace="w1")
+        env.agent("a")
         env.run("apply", "--yes")
         marker = os.path.join(env.root, "ran")
         fake = self.fake_kirocrew(env, marker)
@@ -764,8 +768,8 @@ class Registration(unittest.TestCase):
         self.assertEqual(code, 0, text)
         with open(marker, encoding="utf-8") as handle:
             calls = [line.split() for line in handle.read().splitlines()]
-        self.assertEqual(calls[0][:3], ["workspace", "create", "--name"])
-        self.assertEqual(calls[1][:4], ["agent", "create", "--name", "a"])
+        self.assertEqual(calls[0][:4], ["agent", "create", "--name", "a"])
+        self.assertTrue(all(call[0] != "workspace" for call in calls))
 
     def test_register_run_stops_on_failure(self):
         env = self.make()
@@ -1683,6 +1687,173 @@ class InitTeams(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("Kept 10 agent file(s)", out)
         self.assertTrue(os.path.exists(os.path.join(folder, "conductor.agent.json")))
+
+
+class WorkspaceCommands(unittest.TestCase):
+    def make(self, **kwargs):
+        kwargs.setdefault("workspaces", {"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}})
+        env = Env(**kwargs)
+        self.addCleanup(env.close)
+        self.marker = os.path.join(env.root, "ran")
+        env.settings_file(plan="free", kirocrew_bin=Registration.fake_kirocrew(env, self.marker))
+        return env
+
+    def ran(self):
+        if not os.path.exists(self.marker):
+            return []
+        with open(self.marker, encoding="utf-8") as handle:
+            return handle.read().splitlines()
+
+    class Terminal:
+        def isatty(self):
+            return True
+
+    def interactive(self, env, answers, *argv):
+        feed = iter(answers)
+        asked = []
+
+        def fake_input(prompt=""):
+            asked.append(prompt)
+            return next(feed)
+        with mock.patch("sys.stdin", self.Terminal()), mock.patch("builtins.input", fake_input):
+            code, text = env.run(*argv)
+        return code, text, asked
+
+    def test_agent_using_an_unknown_workspace_blocks_plan_apply_register_validate_but_not_destroy_or_import(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        for command in ("validate", "plan", "apply", "register", "status"):
+            code, text = env.run(command, *(["--yes"] if command == "apply" else []))
+            self.assertEqual(code, 1, (command, text))
+            self.assertIn("workspace 'logs' does not exist in Crew (it has: default, ops)", text)
+        self.assertNotEqual(env.run("destroy", "--yes")[1].count("workspace 'logs' does not exist"), 1)
+
+    def test_known_workspace_and_default_are_fine_and_invalid_names_are_rejected(self):
+        env = self.make()
+        env.agent("a", workspace="ops")
+        env.agent("b", workspace="default")
+        self.assertEqual(env.run("validate")[0], 0)
+        env.agent("c", workspace="bad name!")
+        code, text = env.run("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("not a valid Crew workspace name", text)
+
+    def test_unreadable_crew_config_only_warns(self):
+        env = self.make(with_crew_config=False)
+        os.rmdir(env.crew_home)
+        env.agent("a", workspace="logs")
+        code, text = env.run("validate")
+        self.assertEqual(code, 0, text)
+        self.assertIn("cannot check that the workspaces exist", text)
+
+    def test_fresh_crew_without_config_json_has_only_the_default_workspace(self):
+        env = self.make(with_crew_config=False)
+        env.agent("a", workspace="logs")
+        code, text = env.run("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("workspace 'logs' does not exist in Crew (it has: none)", text)
+
+    def test_list_shows_workspaces_and_who_uses_them(self):
+        env = self.make()
+        env.agent("a", workspace="ops")
+        code, text = env.run("workspace", "list")
+        self.assertEqual(code, 0)
+        self.assertRegex(text, r"ops\s+workspace-ops\s+a")
+        self.assertRegex(text, r"default \*\s+workspace")
+
+    def test_check_with_nothing_missing(self):
+        env = self.make()
+        env.agent("a", workspace="ops")
+        code, text = env.run("workspace", "check")
+        self.assertEqual(code, 0)
+        self.assertIn("every workspace the crewmates use exists", text)
+
+    def test_check_without_a_terminal_prints_the_command_and_creates_nothing(self):
+        env = self.make()
+        env.agent("a", workspace="logs", workspace_dir="my-logs")
+        code, text = env.run("workspace", "check")
+        self.assertEqual(code, 1)
+        self.assertIn("workspace create --name logs --dir my-logs", text)
+        self.assertEqual(self.ran(), [])
+
+    def test_check_yes_creates_with_defaults_and_optional_copy_from(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        env.agent("b", workspace="metrics", workspace_dir="m-folder")
+        code, text = env.run("workspace", "check", "--yes", "--copy-from", "ops")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.ran(), ["workspace create --name logs --dir workspace-logs --copy-from ops",
+                                      "workspace create --name metrics --dir m-folder --copy-from ops"])
+        code, text = env.run("workspace", "check", "--yes", "--copy-from", "nope")      # the fake kirocrew does not write Crew's config
+        self.assertEqual(code, 1)
+        self.assertIn("no workspace named 'nope'", text)
+        self.assertEqual(len(self.ran()), 2)
+
+    def test_check_asks_for_name_folder_and_copy_source_and_confirms(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        answers = ["", "bad/../dir", "/abs", "ws-logs", "nope", "ops", "yes"]
+        code, text, asked = self.interactive(env, answers, "workspace", "check")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.ran(), ["workspace create --name logs --dir ws-logs --copy-from ops"])
+        joined = "\n".join(asked)
+        for question in ("Workspace name", "Folder name under", "Copy the files of an existing workspace", "Create it?"):
+            self.assertIn(question, joined)
+        self.assertIn("give a plain folder name inside Crew's data folder", text)
+        self.assertIn("there is no workspace named 'nope'", text)
+
+    def test_check_refuses_a_folder_already_used_and_a_name_that_exists(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        code, text, _ = self.interactive(env, ["ops", "logs", "workspace-ops", "ws-logs", "", "yes"], "workspace", "check")
+        self.assertEqual(code, 0, text)
+        self.assertIn("a workspace named 'ops' already exists", text)
+        self.assertIn("already used by workspace 'ops'", text)
+        self.assertEqual(self.ran(), ["workspace create --name logs --dir ws-logs"])
+
+    def test_renaming_in_the_questions_warns_that_the_config_still_says_the_old_name(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        code, text, _ = self.interactive(env, ["audit", "", "", "yes"], "workspace", "check")
+        self.assertEqual(code, 0, text)
+        self.assertIn("the config still says 'logs'", text)
+        self.assertEqual(self.ran(), ["workspace create --name audit --dir workspace-audit"])
+
+    def test_answering_no_or_quitting_creates_nothing(self):
+        env = self.make()
+        env.agent("a", workspace="logs")
+        code, text, _ = self.interactive(env, ["", "", "", "no"], "workspace", "check")
+        self.assertEqual(code, 1)
+        self.assertEqual(self.ran(), [])
+        code, text, _ = self.interactive(env, ["q"], "workspace", "check")
+        self.assertEqual(code, 1)
+        self.assertIn("Cancelled", text)
+        self.assertEqual(self.ran(), [])
+
+    def test_create_validates_and_runs_kirocrew(self):
+        env = self.make()
+        for argv, message in ((("logs", "--dir", "../x"), "plain folder name"), (("bad name",), "letters, digits"),
+                              (("ops",), "already exists"), (("logs", "--copy-from", "zzz"), "no workspace named 'zzz'"),
+                              (("logs", "--dir", "workspace-ops"), "already used by workspace 'ops'")):
+            code, text = env.run("workspace", "create", *argv, "-y")
+            self.assertEqual(code, 1, argv)
+            self.assertIn(message, text)
+        self.assertEqual(self.ran(), [])
+        code, text = env.run("workspace", "create", "logs", "--dir", "ws/logs", "--copy-from", "ops", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.ran(), ["workspace create --name logs --dir ws/logs --copy-from ops"])
+        code, text = env.run("workspace", "create", "metrics")          # no terminal, no --yes
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.ran()), 1)
+
+    def test_a_failing_kirocrew_is_reported_and_check_exits_1(self):
+        env = self.make()
+        env.settings_file(plan="free", kirocrew_bin=Registration.fake_kirocrew(env, self.marker, exit_code=3))
+        env.agent("a", workspace="logs")
+        code, text = env.run("workspace", "check", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("failed (exit 3)", text)
+        self.assertIn("still missing", text)
 
 if __name__ == "__main__":
     unittest.main()

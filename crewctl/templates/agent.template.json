@@ -19,7 +19,7 @@
   "_comment_reasoning_effort": "Empty, or low / medium / high / xhigh / max. Only reasoning-capable models use it.",
 
   "prompt_file": "prompts/my-crewmate.md",
-  "_comment_prompt": "Use \"prompt\": \"text\" for a short prompt, or prompt_file for a file inside this folder. Exactly one of the two.",
+  "_comment_prompt": "Use \"prompt\": \"text\" for a short prompt, or prompt_file for a file inside this folder, or prompt_files for a list of files joined in order (shared rule blocks). Exactly one of the three.",
 
   "tools": ["fs_read", "grep", "glob"],
   "_comment_tools": "Required. The tools this crewmate may use. [] means none. \"*\" means all, including write and shell (crewctl warns).",
@@ -40,7 +40,7 @@
 
   "workspace": "default",
   "workspace_dir": "",
-  "_comment_workspace": "The Crew workspace this crewmate works in. workspace_dir is only used when the workspace does not exist yet.",
+  "_comment_workspace": "The Crew workspace this crewmate works in. The workspace must already exist in Crew, or crewctl reports an error; `crewctl workspace check` creates it. workspace_dir is only the suggested folder name for that command.",
   "session_color": "",
   "starred": false
 }

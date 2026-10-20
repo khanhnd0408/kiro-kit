@@ -5,7 +5,6 @@
   "triggers": "Use before implementing a feature: turn a request into a spec, an implementation plan, a todo list and a completion checklist.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-sonnet-5.5",
-  "prompt_file": "prompts/spec-agent.md",
   "tools": [
     "fs_read",
     "grep",
@@ -19,16 +18,23 @@
     "grep",
     "glob",
     "code",
-    "@kirocrew-core/skill_search"
+    "@kirocrew-core/skill_search",
+    "@kirocrew-core/ask_question"
   ],
   "crew_servers": {
     "core": {
       "tools": [
-        "skill_search"
+        "skill_search",
+        "ask_question"
       ]
     }
   },
   "skills": [
     "~/.kiro/crew/skills/spec-driven-workflow/SKILL.md"
+  ],
+  "prompt_files": [
+    "prompts/spec-agent.md",
+    "prompts/_working-rules.md",
+    "prompts/_language.md"
   ]
 }

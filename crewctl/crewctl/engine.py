@@ -93,13 +93,35 @@ class Context:
     problems: list
 
 
-def build_context(config_dir, overrides=None):
+def build_context(config_dir, overrides=None, check_workspaces=True):
     config_dir = os.path.abspath(config_dir)
     settings, specs, problems = cfg.load_config(
         config_dir, overrides, local_models=lambda s: load_view(s.crew_home).model_ids)
     view = load_view(settings.crew_home)
+    if check_workspaces:
+        problems.extend(workspace_problems(specs, view))
     state = load_state(config_dir) if os.path.isdir(config_dir) else None
     return Context(config_dir, settings, specs, state, view, problems)
+
+
+def workspace_problems(specs, view):
+    """A workspace that Crew does not have is an error: Crew would silently use the default one instead."""
+    from . import workspaces as ws
+    from .config import Problem
+    used = [s for s in specs if s.workspace != view.default_workspace and s.workspace != "default"]
+    if not used:
+        return []
+    if not view.usable:
+        return [Problem("warn", "workspace", f"cannot check that the workspaces exist: {view.error}. "
+                                             f"Used by the config: {', '.join(sorted({s.workspace for s in used}))}.")]
+    out = []
+    have = ", ".join(sorted(view.workspaces)) or "none"
+    for name, users in sorted(ws.missing_workspaces(view, specs).items()):
+        out.append(Problem("error", os.path.basename(next(s.source_file for s in specs if s.name == users[0])),
+                           f"workspace '{name}' does not exist in Crew (it has: {have}). Used by: {', '.join(users)}. "
+                           f"Create it with `crewctl workspace check` (it asks for the details) or "
+                           f"`crewctl workspace create {name}`."))
+    return out
 
 
 def _agent_path(ctx, kiro_agent):
@@ -220,22 +242,16 @@ def plan_registration(ctx, specs, removed_names):
             dashboard_wanted["starred"] = True
         record = view.agents.get(spec.name)
         action = RegAction(name=spec.name, kind="in-sync")
-        commands_prefix = []
-        if spec.workspace != "default" and spec.workspace not in view.workspaces:
-            command = ["workspace", "create", "--name", spec.workspace]
-            if spec.workspace_dir:
-                command += ["--dir", spec.workspace_dir]
-            commands_prefix.append(command)
         if not view.config_found:
             action.kind = "unknown"
             action.notes.append(f"could not read Crew's config ({view.error}); showing the commands for a fresh crewmate")
             set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
-            action.commands = commands_prefix + [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
+            action.commands = [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
                                                   "--workspace", spec.workspace]] + set_commands
         elif record is None:
             action.kind = "register"
             set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
-            action.commands = commands_prefix + [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
+            action.commands = [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
                                                   "--workspace", spec.workspace]] + set_commands
         else:
             diffs = record_differences(desired, record)
@@ -243,14 +259,14 @@ def plan_registration(ctx, specs, removed_names):
                 action.notes.append(f"the crew record pins model '{record['model']}', which overrides the model in the agent "
                                     "file. Clear it in the dashboard (Agent Capabilities -> Agents) to use the file's model.")
             cli_diffs = [f for f in CLI_FIELDS if f in diffs]
-            if cli_diffs or commands_prefix:
+            if cli_diffs:
                 action.kind = "update"
                 update = ["agent", "update", spec.name]
                 if "kiro_agent" in cli_diffs:
                     update += ["--kiro-agent", spec.kiro_agent]
                 if "workspace" in cli_diffs:
                     update += ["--workspace", spec.workspace]
-                action.commands = commands_prefix + ([update] if cli_diffs else [])
+                action.commands = [update] if cli_diffs else []
             other = {f: v for f, v in diffs.items() if f not in CLI_FIELDS}
             if other:
                 action.kind = "update" if action.kind == "in-sync" else action.kind
@@ -270,22 +286,26 @@ def command_line(binary, argv):
     return shlex.join([binary] + argv)
 
 
+def run_commands(binary, commands, log):
+    """Run kirocrew commands one by one; stop at the first failure. Returns how many ran."""
+    done = 0
+    for argv in commands:
+        log(f"$ {command_line(binary, argv)}")
+        try:
+            result = subprocess.run([binary] + argv, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ApplyBlocked(f"could not run {binary}: {error}")
+        if result.stdout.strip():
+            log(result.stdout.strip())
+        if result.returncode != 0:
+            raise ApplyBlocked(f"{binary} {' '.join(argv[:2])} failed (exit {result.returncode}): {result.stderr.strip()[:300]}")
+        done += 1
+    return done
+
+
 def run_registration(ctx, plan, binary, log):
     """Run the kirocrew commands from the plan. Only called when the user asks for --run."""
-    done = 0
-    for action in plan.registrations:
-        for argv in action.commands:
-            log(f"$ {command_line(binary, argv)}")
-            try:
-                result = subprocess.run([binary] + argv, capture_output=True, text=True, timeout=120)
-            except (OSError, subprocess.SubprocessError) as error:
-                raise ApplyBlocked(f"could not run {binary}: {error}")
-            if result.stdout.strip():
-                log(result.stdout.strip())
-            if result.returncode != 0:
-                raise ApplyBlocked(f"{binary} {' '.join(argv[:2])} failed (exit {result.returncode}): {result.stderr.strip()[:300]}")
-            done += 1
-    return done
+    return run_commands(binary, [argv for action in plan.registrations for argv in action.commands], log)
 
 
 def apply_plan(ctx, plan, force=False, log=print, break_lock=False):

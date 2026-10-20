@@ -111,6 +111,8 @@ crewctl validate
 You should see ten crewmate lines and the last line: `OK: 10 crewmate(s) valid.`
 If you see `ERROR`, read the message; it names the file and the problem.
 
+If the error says a **workspace does not exist**, run `crewctl workspace check`. It asks for the workspace name, the folder name under `~/.kiro/crew`, and (optionally) an existing workspace to copy the files from, then creates it with `kirocrew workspace create`. The ten crewmates here use the `default` workspace, so you only see this if you changed a `workspace` line.
+
 ## Step 6. Install the skills
 
 First look at what will be written (nothing is written yet):
@@ -180,7 +182,7 @@ python3 ~/.kiro/crew/skills/incident-investigation/scripts/collect_evidence.py l
 ```
 You should see a line starting with `# logs:`. Exit code 2 and a message about a URL means the variable is not set in this terminal. I could not check whether an agent session passes these variables on, so after this works, ask the inspector to run the same command and tell you the result.
 
-## Step 11. Three cheap tests (a few credits in total)
+## Step 11. Four cheap tests (a few credits in total)
 
 Use the dashboard chat for each.
 
@@ -189,6 +191,7 @@ Use the dashboard chat for each.
 3. **The loop.** Pick `orchestrator-agent` and send:
    `Ask go-agent to write and run a tiny Go program that sleeps 150 seconds and then prints done. Check every 60 seconds, up to 4 rounds.`
    You should see lines like `Round 1/4: run <id> go-agent RUNNING ...` about every minute, then a final report. If it ends its turn right after starting the run and prints no round lines, tell me; the prompt override did not work on your version.
+4. **Language.** Pick `orchestrator-agent` and write to it in Vietnamese, for example: `Nhờ python-agent viết hàm kiểm tra số nguyên tố, rồi tóm tắt cho tôi.` The final answer and any question card must be in Vietnamese. Then open the session's transcript (Sessions in the dashboard) and look at the brief sent to `python-agent`: it must start with `SUBAGENT TASK from orchestrator-agent. Reply in English only` and be entirely English, and so must `python-agent`'s reply to the orchestrator and the code comments it wrote. If a brief or a tool call is in Vietnamese, tell me which agent did it.
 
 ## Changing things later
 

@@ -5,7 +5,6 @@
   "triggers": "Use to investigate an incident or alert: collect evidence for a time window, decide where to look next, and fill in the incident report.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-sonnet-5.5",
-  "prompt_file": "prompts/inspector-agent.md",
   "tools": [
     "fs_read",
     "grep",
@@ -30,5 +29,10 @@
   },
   "skills": [
     "~/.kiro/crew/skills/incident-investigation/SKILL.md"
+  ],
+  "prompt_files": [
+    "prompts/inspector-agent.md",
+    "prompts/_working-rules.md",
+    "prompts/_language.md"
   ]
 }

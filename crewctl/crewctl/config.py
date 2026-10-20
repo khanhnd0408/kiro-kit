@@ -30,7 +30,7 @@ MEMBER_NAME_MAX = 500
 PROMPT_FILE_MAX_BYTES = 200_000
 
 AGENT_KEYS = ("name", "kiro_agent", "display_name", "description", "triggers", "model", "paid_model", "reasoning_effort",
-              "prompt", "prompt_file", "tools", "allowed_tools", "mcp_servers", "include_mcp_json", "resources",
+              "prompt", "prompt_file", "prompt_files", "tools", "allowed_tools", "mcp_servers", "include_mcp_json", "resources",
               "permissions", "hooks", "skills", "crew_servers", "extra_agent_fields", "workspace", "workspace_dir",
               "session_color", "starred")
 # Keys written by crewctl itself; extra_agent_fields may not override them.
@@ -333,7 +333,7 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
     unknown = [k for k in raw if k not in AGENT_KEYS and not k.startswith("_") and k != "$schema"]
     for key in unknown:
         problems.append(Problem("error", where, f"unknown field '{key}'. Allowed: {', '.join(AGENT_KEYS)}"))
-    data = {k: v for k, v in defaults.items() if k not in ("name", "kiro_agent", "prompt_file", "prompt")}
+    data = {k: v for k, v in defaults.items() if k not in ("name", "kiro_agent", "prompt_file", "prompt_files", "prompt")}
     data.update({k: v for k, v in raw.items() if k in AGENT_KEYS})
 
     name = data.get("name")
@@ -390,35 +390,50 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
     else:
         spec.reasoning_effort = effort
 
-    # The agent's own prompt or prompt_file wins; the defaults file only fills a gap.
-    if "prompt" in raw or "prompt_file" in raw:
-        prompt, prompt_file = raw.get("prompt"), raw.get("prompt_file")
-    else:
-        prompt, prompt_file = defaults.get("prompt"), defaults.get("prompt_file")
+    # The agent's own prompt, prompt_file or prompt_files wins; the defaults file only fills a gap.
+    prompt_keys = ("prompt", "prompt_file", "prompt_files")
+    source = raw if any(k in raw for k in prompt_keys) else defaults
+    prompt, prompt_file, prompt_files = (source.get(k) for k in prompt_keys)
     prompt_error = None
-    if bool(prompt) == bool(prompt_file):
-        prompt_error = "set exactly one of \"prompt\" or \"prompt_file\""
+    root = os.path.realpath(config_dir)
+
+    def read_prompt_file(name, label):
+        target = os.path.realpath(os.path.join(config_dir, str(name)))
+        if not isinstance(name, str) or os.path.isabs(name) or not (target == root or target.startswith(root + os.sep)):
+            return None, f"{label} must be a relative path inside the config folder"
+        if not os.path.isfile(target):
+            return None, f"{label} not found: {name}"
+        if os.path.getsize(target) > PROMPT_FILE_MAX_BYTES:
+            return None, f"{label} {name} is larger than {PROMPT_FILE_MAX_BYTES} bytes"
+        try:
+            with open(target, encoding="utf-8") as handle:
+                return handle.read(), None
+        except (OSError, UnicodeDecodeError) as error:
+            return None, f"cannot read {label} {name}: {error}"
+
+    if sum(1 for value in (prompt, prompt_file, prompt_files) if value) != 1:
+        prompt_error = "set exactly one of \"prompt\", \"prompt_file\" or \"prompt_files\""
     elif prompt:
         if isinstance(prompt, str):
             spec.prompt = prompt
         else:
             prompt_error = "prompt must be text"
+    elif prompt_file:
+        text, prompt_error = read_prompt_file(prompt_file, "prompt_file")
+        if text is not None:
+            spec.prompt = text
     else:
-        base = os.path.dirname(path) if "prompt_file" in raw else config_dir
-        target = os.path.realpath(os.path.join(base, str(prompt_file)))
-        root = os.path.realpath(config_dir)
-        if os.path.isabs(str(prompt_file)) or not (target == root or target.startswith(root + os.sep)):
-            prompt_error = "prompt_file must be a relative path inside the config folder"
-        elif not os.path.isfile(target):
-            prompt_error = f"prompt_file not found: {prompt_file}"
-        elif os.path.getsize(target) > PROMPT_FILE_MAX_BYTES:
-            prompt_error = f"prompt_file is larger than {PROMPT_FILE_MAX_BYTES} bytes"
+        if not _is_str_list(prompt_files):
+            prompt_error = "prompt_files must be a list of relative file paths"
         else:
-            try:
-                with open(target, encoding="utf-8") as handle:
-                    spec.prompt = handle.read()
-            except (OSError, UnicodeDecodeError) as error:
-                prompt_error = f"cannot read prompt_file: {error}"
+            parts = []
+            for name in prompt_files:
+                text, prompt_error = read_prompt_file(name, "prompt_files entry")
+                if prompt_error:
+                    break
+                parts.append(text.strip("\n"))
+            if prompt_error is None:
+                spec.prompt = "\n\n".join(parts) + "\n"
     if prompt_error is None and not spec.prompt.strip():
         prompt_error = "the prompt is empty"
     if prompt_error:
@@ -499,6 +514,10 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
     workspace = data.get("workspace", "default")
     if isinstance(workspace, str) and workspace.strip():
         spec.workspace = workspace.strip()
+        from .workspaces import NAME_RE as WORKSPACE_NAME_RE
+        if not WORKSPACE_NAME_RE.match(spec.workspace):
+            problems.append(Problem("error", where, f"workspace '{spec.workspace}' is not a valid Crew workspace name "
+                                                    "(letters, digits, hyphens and underscores; at most 64 characters)"))
     else:
         problems.append(Problem("error", where, "workspace must be non-empty text"))
     workspace_dir = data.get("workspace_dir", "")
@@ -520,7 +539,7 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
         else:
             problems.append(Problem("error", where, "starred must be true or false"))
 
-    scanned = {k: v for k, v in data.items() if k not in ("prompt", "prompt_file")}
+    scanned = {k: v for k, v in data.items() if k not in ("prompt", "prompt_file", "prompt_files")}
     for spot in _find_secrets(scanned) + _find_secrets(spec.prompt, "prompt"):
         problems.append(Problem("error", where, f"{spot} looks like a real credential. Keep secrets out of config files "
                                                 "(they get committed); pass them through the environment instead."))

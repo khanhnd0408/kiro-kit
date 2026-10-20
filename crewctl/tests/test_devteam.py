@@ -302,7 +302,8 @@ class Pack(Tmp):
             data = json.load(open(os.path.join(PACK, name)))
             for path in data.get("skills", []):
                 self.assertIn(path.split("/")[-2], known, (name, path))
-            self.assertTrue(os.path.exists(os.path.join(PACK, data["prompt_file"])))
+            for part in data["prompt_files"]:
+                self.assertTrue(os.path.exists(os.path.join(PACK, part)), (name, part))
         inspector = json.load(open(os.path.join(PACK, "inspector-agent.agent.json")))
         self.assertNotIn("web_fetch", inspector["tools"])
         for read_only in ("backend-architecture-agent",):
@@ -327,7 +328,7 @@ class Pack(Tmp):
 
     def test_orchestrator_supervision_loop_is_consistent_with_crew(self):
         agent = json.load(open(os.path.join(PACK, "orchestrator-agent.agent.json")))
-        prompt = open(os.path.join(PACK, agent["prompt_file"]), encoding="utf-8").read()
+        prompt = open(os.path.join(PACK, agent["prompt_files"][0]), encoding="utf-8").read()
         for tool in ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "wait"):
             self.assertIn(f"@kirocrew-core/{tool}", agent["allowed_tools"])
             self.assertIn(tool, agent["crew_servers"]["core"]["tools"])
@@ -348,6 +349,41 @@ class Pack(Tmp):
             self.assertIn(name, prompt)
         self.assertIn("`crew` field", prompt)
         self.assertIn("round 5 of 24", prompt)
+
+    def compiled_prompts(self):
+        from crewctl.config import load_config
+        _, specs, problems = load_config(self.pack, {"agents_dir": self.agents, "crew_home": self.tmp})
+        self.assertEqual([p.message for p in problems if p.level == "error"], [])
+        return {spec.name: spec.prompt for spec in specs}
+
+    def test_every_prompt_carries_the_language_rules(self):
+        language = open(os.path.join(PACK, "prompts", "_language.md"), encoding="utf-8").read().strip()
+        prompts = self.compiled_prompts()
+        self.assertEqual(len(prompts), 10)
+        for name, prompt in prompts.items():
+            self.assertIn(language, prompt, name)
+            self.assertTrue(prompt.rstrip().endswith(language.splitlines()[-1]), f"{name}: language rules must come last")
+            self.assertNotIn("user's language", prompt, name)
+        for needle in ("Think, plan and reason in English only", "Vietnamese is for the person only", 'begins with "SUBAGENT TASK"',
+                       "never use ask_question"):
+            self.assertIn(needle, language)
+
+    def test_orchestrator_briefs_specialists_in_english_and_reports_in_vietnamese(self):
+        prompt = self.compiled_prompts()["orchestrator-agent"]
+        self.assertIn("SUBAGENT TASK from orchestrator-agent. Reply in English only", prompt)
+        self.assertIn("Final report to the user, in Vietnamese", prompt)
+        self.assertIn("ask_question tool (header, question and option text in Vietnamese)", prompt)
+        self.assertIn("progress lines in the loop below stay English", prompt)
+
+    def test_agents_that_ask_the_user_can_use_the_question_card(self):
+        for name in ("orchestrator-agent", "backend-architecture-agent", "spec-agent"):
+            agent = json.load(open(os.path.join(PACK, f"{name}.agent.json")))
+            self.assertIn("ask_question", agent["crew_servers"]["core"]["tools"], name)
+            self.assertIn("@kirocrew-core/ask_question", agent["allowed_tools"], name)
+        prompts = self.compiled_prompts()
+        self.assertIn("ask_question tool", prompts["backend-architecture-agent"])
+        self.assertIn("ask_question tool", prompts["spec-agent"])
+        self.assertIn("English, even when the user writes Vietnamese", prompts["spec-agent"])
 
     def test_no_credentials_or_personal_text_in_the_pack(self):
         from crewctl.config import SECRET_PATTERNS

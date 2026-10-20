@@ -5,7 +5,6 @@
   "triggers": "Use to design a backend system, choose technologies, define coding style or plan a project's folder structure.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-opus-5.5",
-  "prompt_file": "prompts/backend-architecture-agent.md",
   "tools": [
     "fs_read",
     "grep",
@@ -20,16 +19,23 @@
     "grep",
     "glob",
     "code",
-    "@kirocrew-core/skill_search"
+    "@kirocrew-core/skill_search",
+    "@kirocrew-core/ask_question"
   ],
   "crew_servers": {
     "core": {
       "tools": [
-        "skill_search"
+        "skill_search",
+        "ask_question"
       ]
     }
   },
   "skills": [
     "~/.kiro/crew/skills/architecture-interview/SKILL.md"
+  ],
+  "prompt_files": [
+    "prompts/backend-architecture-agent.md",
+    "prompts/_working-rules.md",
+    "prompts/_language.md"
   ]
 }

@@ -67,8 +67,8 @@ def _print_problems(problems, out, verbose):
     return sum(1 for p in problems if p.level == "error")
 
 
-def _load(args, out, need_state=True):
-    ctx = build_context(_config_dir(args), _overrides(args))
+def _load(args, out, need_state=True, check_workspaces=True):
+    ctx = build_context(_config_dir(args), _overrides(args), check_workspaces=check_workspaces)
     errors = _print_problems(ctx.problems, out, args.verbose)
     if errors:
         print(out.red(f"\n{errors} error(s) in the config. Fix them and run again."))
@@ -497,6 +497,127 @@ def cmd_overview(args):
     return 0
 
 
+class Cancelled(Exception):
+    pass
+
+
+def _ask(question, default="", validate=None):
+    """Ask on the terminal until the answer is valid. Enter keeps the default. Ctrl-D or 'q' cancels."""
+    while True:
+        try:
+            answer = input(f"{question}" + (f" [{default}]" if default else "") + ": ").strip()
+        except EOFError:
+            raise Cancelled()
+        if answer.lower() == "q":
+            raise Cancelled()
+        answer = answer or default
+        problem = validate(answer) if validate else ""
+        if not problem:
+            return answer
+        print(f"  {problem}")
+
+
+def _workspace_create(ctx, args, out, name, directory, copy_from, assume_yes):
+    from . import workspaces as ws
+    argv = ws.create_command(name, directory, copy_from)
+    binary = ctx.settings.kirocrew_bin
+    print(f"\nThis will run: {out.bold(command_line(binary, argv))}")
+    print(f"  Workspace {out.bold(name)} will use the folder {out.bold(_tilde(os.path.join(ctx.settings.crew_home, directory)))}"
+          + (f", filled with the files of workspace {out.bold(copy_from)}." if copy_from else "."))
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            print(out.red("Refusing to ask a question without a terminal. Use --yes."))
+            return False
+        if input("Create it? Type 'yes' to continue: ").strip() != "yes":
+            print("Skipped.")
+            return False
+    from .engine import run_commands
+    try:
+        run_commands(binary, [argv], print)
+    except ApplyBlocked as error:
+        print(out.red(str(error)))
+        return False
+    return True
+
+
+def cmd_workspace(args):
+    from . import workspaces as ws
+    out = _out(args)
+    ctx = _load(args, out, need_state=False, check_workspaces=False)
+    if ctx is None:
+        return 1
+    view = ctx.view
+    if not view.usable:
+        print(out.red(f"Cannot read Crew's config: {view.error}. Start Crew once on this machine first."))
+        return 1
+    users = {}
+    for spec in ctx.specs:
+        users.setdefault(spec.workspace, []).append(spec.name)
+    if args.workspace_action == "list":
+        print(f"{'WORKSPACE':<22}{'FOLDER (under ' + _tilde(ctx.settings.crew_home) + ')':<42}USED BY")
+        names = sorted(set(view.workspaces) | set(users) | {view.default_workspace})
+        for name in names:
+            record = view.workspaces.get(name)
+            folder = record.get("dir", "") if record else ("(built-in)" if name == view.default_workspace else out.red("MISSING"))
+            star = " *" if name == view.default_workspace else ""
+            print(f"{name + star:<22}{folder:<42}{', '.join(users.get(name, [])) or '-'}")
+        return 0
+    if args.workspace_action == "create":
+        problem = ws.check_name(args.name, view) or ws.check_dir(args.dir or ws.default_dir(args.name), view) \
+            or ws.check_copy_from(args.copy_from or "", view)
+        if problem:
+            print(out.red(problem))
+            return 1
+        return 0 if _workspace_create(ctx, args, out, args.name, args.dir or ws.default_dir(args.name), args.copy_from or "", args.yes) else 1
+    # check
+    missing = ws.missing_workspaces(view, ctx.specs)
+    if not missing:
+        used = sorted(users)
+        print(out.green(f"All good: every workspace the crewmates use exists in Crew ({', '.join(used) or 'none'})."))
+        return 0
+    interactive = sys.stdin.isatty() and not args.yes
+    print(f"{len(missing)} workspace(s) used by the config do not exist in Crew: {', '.join(sorted(missing))}.")
+    failed = 0
+    for wanted, crewmates in sorted(missing.items()):
+        hint = next((s.workspace_dir for s in ctx.specs if s.workspace == wanted and s.workspace_dir), "")
+        print(f"\nWorkspace {out.bold(wanted)} is used by: {', '.join(crewmates)}.")
+        if not interactive and not args.yes:
+            print(f"  Create it with: {command_line(ctx.settings.kirocrew_bin, ws.create_command(wanted, ws.default_dir(wanted, hint)))}")
+            print("  or run `crewctl workspace check` in a terminal to be asked for the details, or add --yes to use the defaults.")
+            failed += 1
+            continue
+        try:
+            if interactive:
+                print(out.dim("  Answer each question; Enter keeps the value in brackets; q cancels."))
+                name = _ask("  Workspace name", wanted, lambda v: ws.check_name(v, view))
+                directory = _ask(f"  Folder name under {_tilde(ctx.settings.crew_home)}", ws.default_dir(name, hint if name == wanted else ""),
+                                 lambda v: ws.check_dir(v, view))
+                print(f"  Existing workspaces you can copy from: {', '.join(sorted(view.workspaces)) or 'none'}")
+                copy_from = _ask("  Copy the files of an existing workspace (optional; Enter for none)", "",
+                                 lambda v: ws.check_copy_from(v, view))
+                if name != wanted:
+                    print(out.yellow(f"  Note: the config still says '{wanted}'. Change `workspace` in the agent files to '{name}' afterwards."))
+            else:
+                name, directory, copy_from = wanted, ws.default_dir(wanted, hint), args.copy_from or ""
+                problem = ws.check_dir(directory, view) or ws.check_copy_from(copy_from, view)
+                if problem:
+                    print(out.red(f"  {problem}"))
+                    failed += 1
+                    continue
+        except Cancelled:
+            print("\nCancelled.")
+            return 1
+        if _workspace_create(ctx, args, out, name, directory, copy_from, args.yes or not interactive):
+            view.workspaces[name] = {"dir": directory}
+        else:
+            failed += 1
+    if failed:
+        print(out.red(f"\n{failed} workspace(s) still missing."))
+        return 1
+    print(out.green("\nDone. Run `crewctl validate` again."))
+    return 0
+
+
 def cmd_plan(args):
     out = _out(args)
     ctx = _load(args, out)
@@ -540,7 +661,7 @@ def cmd_apply(args):
 
 def cmd_destroy(args):
     out = _out(args)
-    ctx = _load(args, out)
+    ctx = _load(args, out, check_workspaces=False)
     if ctx is None:
         return 1
     ctx = dataclasses.replace(ctx, specs=[])
@@ -639,7 +760,7 @@ def cmd_register(args):
 
 def cmd_import(args):
     out = _out(args)
-    ctx = _load(args, out)
+    ctx = _load(args, out, check_workspaces=False)
     if ctx is None:
         return 1
     try:
@@ -653,7 +774,7 @@ def cmd_import(args):
 
 def cmd_state(args):
     out = _out(args)
-    ctx = build_context(_config_dir(args), _overrides(args))
+    ctx = build_context(_config_dir(args), _overrides(args), check_workspaces=False)
     if ctx.state is None:
         print(out.red("config folder not found."))
         return 1
@@ -728,6 +849,18 @@ def build_parser():
     p = sub.add_parser("lint-skills", help="check SKILL.md files (folder or file paths)")
     p.add_argument("paths", nargs="+")
     p.set_defaults(func=cmd_lint_skills)
+    p = sub.add_parser("workspace", help="list the workspaces, check the ones the crewmates use, create missing ones")
+    wsub = p.add_subparsers(dest="workspace_action", required=True)
+    wsub.add_parser("list", help="the workspaces Crew has, and which crewmates use them")
+    q = wsub.add_parser("check", help="find workspaces the config uses but Crew lacks, and create them (asks for the details)")
+    q.add_argument("-y", "--yes", action="store_true", help="do not ask: create each missing workspace with the default folder name")
+    q.add_argument("--copy-from", metavar="NAME", help="with --yes: fill the new workspace with the files of this existing workspace")
+    q = wsub.add_parser("create", help="create one workspace")
+    q.add_argument("name", help="workspace name (letters, digits, hyphens, underscores)")
+    q.add_argument("--dir", metavar="FOLDER", help="folder name under Crew's data folder (default: workspace-<name>)")
+    q.add_argument("--copy-from", metavar="NAME", help="fill it with the files of this existing workspace (optional)")
+    q.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
+    p.set_defaults(func=cmd_workspace)
     sub.add_parser("crew-servers", help="check where Crew's own tool servers are found").set_defaults(func=cmd_crew_servers)
     p = sub.add_parser("skills", help="build SKILL.md files from skills/*.skill.json")
     p.add_argument("skills_action", choices=["new", "plan", "apply", "destroy"])

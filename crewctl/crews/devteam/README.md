@@ -65,6 +65,16 @@ crewctl register             # prints the kirocrew commands; add --run to execut
 
 The agent files point at skills in `~/.kiro/crew/skills/`. If you set another `skills_dir`, edit the paths in the `skills` lists.
 
+## Language rules
+
+The user may write in English or Vietnamese. The agents think, plan, call tools, write files and brief each other in **English only**. Vietnamese appears in exactly two places: the final answer to the user, and anything that asks the user for input (the `ask_question` card with its header, question and option text, `[OPTIONS: ...]` lists, and plain questions). Code, commands, paths, identifiers and quoted log lines are never translated. Files stay English unless the user asks for a Vietnamese file. Progress lines the orchestrator prints during its check loop are not final answers, so they stay English.
+
+The rules live in `prompts/_language.md` and are added to every agent by `prompt_files` (the agent's own prompt, then `prompts/_working-rules.md`, then the language rules last). Edit the one file to change them for all ten. The orchestrator starts every brief to a specialist with `SUBAGENT TASK from orchestrator-agent. Reply in English only; ...`; a specialist that sees that line writes English only and never asks the user. `orchestrator-agent`, `backend-architecture-agent` and `spec-agent` have the `ask_question` tool for the Vietnamese question cards.
+
+## Workspaces
+
+Every crewmate here uses the `default` workspace. If you give one a different `workspace`, it must exist in Crew first; `crewctl validate` stops with an error otherwise. `crewctl workspace check` finds the missing ones and asks for the name, the folder name under `~/.kiro/crew` and (optionally) an existing workspace to copy files from.
+
 ## The orchestrator and the check loop
 
 There is one orchestrator, on purpose: with several specialists, one crewmate has to decide who works, give each a self-contained brief, stop two of them editing the same file, and check what comes back. You talk to `orchestrator-agent` for anything that needs more than one specialist. Crew's own routing still works for single-specialist requests.

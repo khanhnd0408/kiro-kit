@@ -5,7 +5,6 @@
   "triggers": "Use for LLM application design, RAG, agents, prompts, evaluation, guardrails, and any GenAI decision that needs a confidence level.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-sonnet-5.5",
-  "prompt_file": "prompts/genai-agent.md",
   "tools": [
     "fs_read",
     "grep",
@@ -32,5 +31,10 @@
   },
   "skills": [
     "~/.kiro/crew/skills/genai-decision-checklist/SKILL.md"
+  ],
+  "prompt_files": [
+    "prompts/genai-agent.md",
+    "prompts/_working-rules.md",
+    "prompts/_language.md"
   ]
 }

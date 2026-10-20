@@ -1,7 +1,7 @@
 """A read-only view of Kiro Crew's own data folder.
 
 crewctl never writes here. It reads only three things from config.json (the agent
-records, the workspace names, and nothing else; the file also holds channel tokens,
+records, the workspace names and the default workspace, and nothing else; the file also holds channel tokens,
 which this module never touches) and the model list from provider_models.json.
 """
 
@@ -13,9 +13,11 @@ class CrewView:
     def __init__(self, home):
         self.home = home
         self.config_found = False
+        self.usable = False          # config.json read, or Crew's data folder exists (a fresh Crew has no config.json yet)
         self.error = ""
         self.agents = {}
         self.workspaces = {}
+        self.default_workspace = "default"
         self.model_ids = None
 
 
@@ -39,9 +41,14 @@ def load_view(home):
             agents = data.get("agents")
             if isinstance(agents, dict):
                 view.agents = {k: v for k, v in agents.items() if isinstance(v, dict)}
+            default_workspace = data.get("default_workspace")
+            if isinstance(default_workspace, str) and default_workspace:
+                view.default_workspace = default_workspace
             workspaces = data.get("workspaces")
             if isinstance(workspaces, dict):
                 view.workspaces = {k: v for k, v in workspaces.items() if isinstance(v, dict)}
+    # A started Crew with no config.json yet has only its default workspace and no crewmates.
+    view.usable = view.config_found or os.path.isdir(home)
     try:
         models = _load_json(os.path.join(home, "provider_models.json"))
         ids = set()
