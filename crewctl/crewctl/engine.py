@@ -162,9 +162,15 @@ def build_plan(ctx, targets=None):
                 if other:
                     change.conflict = (f"{spec.kiro_agent}.json is already managed under the name '{other}'. If this is a rename, "
                                        f"run `crewctl state mv {other} {name}` first.")
+                elif disk_sha == new_sha:
+                    change.action = "adopt"
+                    change.reasons.append("the file already holds exactly this config (for example it was written from another "
+                                          "config folder); it is recorded in the state without being written")
                 else:
-                    change.conflict = (f"{spec.kiro_agent}.json already exists and crewctl does not manage it. Run "
-                                       f"`crewctl import {name}` to adopt it (the plan then shows what would change), or move it away.")
+                    change.conflict = (f"{spec.kiro_agent}.json already exists and this config folder's state has no record of "
+                                       f"crewctl creating it (the state is kept per config folder, in .crewctl/state.json; if you applied from "
+                                       f"another config folder, use that one). Run `crewctl import {name}` to adopt it (the plan then "
+                                       f"shows what would change), or move it away.")
         else:
             recorded = entry.get("file_sha256")
             if entry.get("kiro_agent") != spec.kiro_agent:
@@ -315,7 +321,7 @@ def apply_plan(ctx, plan, force=False, log=print, break_lock=False):
         raise ApplyBlocked("cannot apply:\n  " + "\n  ".join(blockers))
     from .state import lock_path
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    done = {"create": 0, "update": 0, "replace": 0, "delete": 0, "refresh": 0}
+    done = {"create": 0, "update": 0, "replace": 0, "delete": 0, "refresh": 0, "adopt": 0}
     with FileLock(lock_path(ctx.config_dir), break_lock=break_lock):
         state = load_state(ctx.config_dir)   # re-read under the lock
         ordered = [c for c in plan.changes if c.action not in ("delete",)] + [c for c in plan.changes if c.action == "delete"]
@@ -339,6 +345,13 @@ def apply_plan(ctx, plan, force=False, log=print, break_lock=False):
                     change.name, spec.kiro_agent, sha256_bytes(change.new_bytes),
                     os.path.relpath(spec.source_file, ctx.config_dir), to_registration(spec))
                 log(f"  applied {change.action}: {change.name} -> {target}")
+            elif change.action == "adopt":
+                spec = change.spec
+                state.removed.pop(change.name, None)
+                state.agents[change.name] = new_entry(
+                    change.name, spec.kiro_agent, sha256_bytes(change.new_bytes),
+                    os.path.relpath(spec.source_file, ctx.config_dir), to_registration(spec))
+                log(f"  adopted: {change.name} ({_agent_path(ctx, spec.kiro_agent)}) - already identical")
             elif change.action == "delete":
                 if os.path.exists(change.old_file):
                     backup_file(ctx.config_dir, stamp, change.old_file, os.path.basename(change.old_file))

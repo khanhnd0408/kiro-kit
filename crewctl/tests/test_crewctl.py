@@ -1218,6 +1218,77 @@ class SkillGeneration(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(open(self.skill_file()).read(), "mine")
 
+    def other_config_folder(self):
+        """A second config folder with the same skill specs, as when a team is copied or the folder changes."""
+        other = os.path.join(self.tmp, "crew2")
+        shutil.copytree(self.config, other, ignore=shutil.ignore_patterns(".crewctl"))
+        return other
+
+    def run_other(self, other, *argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["--no-color", "-c", other, "skills", *argv])
+        return code, buffer.getvalue()
+
+    def test_a_folder_that_is_identical_is_adopted_without_writing_anything(self):
+        self.spec()
+        self.run_cli("apply", "-y")
+        before = os.stat(self.skill_file()).st_mtime_ns
+        other = self.other_config_folder()                      # same specs, but no state: crewctl has no record
+        code, text = self.run_other(other, "apply", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertIn("1 adopted", text)
+        self.assertEqual(os.stat(self.skill_file()).st_mtime_ns, before)
+        self.assertEqual(self.run_other(other, "apply", "-y")[1].count("No changes"), 1)       # recorded: now a no-op
+
+    def test_a_different_folder_needs_adopt_explains_why_and_is_backed_up(self):
+        self.spec()
+        self.run_cli("apply", "-y")
+        extra = os.path.join(os.path.dirname(self.skill_file()), "notes.txt")
+        open(extra, "w").write("mine")
+        self.spec(steps=["one", "two", "three"])
+        other = self.other_config_folder()
+        code, text = self.run_other(other, "plan")
+        self.assertEqual(code, 0)
+        self.assertIn("needs --adopt", text)
+        code, text = self.run_other(other, "apply", "-y")
+        self.assertEqual(code, 1)
+        self.assertIn("no record of creating it in this config folder", text)
+        self.assertIn("per config folder", text)
+        self.assertNotIn("three", open(self.skill_file()).read())
+        code, text = self.run_other(other, "apply", "-y", "--force")                 # --force is not enough
+        self.assertEqual(code, 1)
+        code, text = self.run_other(other, "apply", "-y", "--adopt")
+        self.assertEqual(code, 0, text)
+        self.assertIn("3. three", open(self.skill_file()).read())
+        self.assertEqual(open(extra).read(), "mine")
+        backups = os.path.join(other, ".crewctl", "backups")
+        self.assertTrue(any("SKILL.md" in f for _, _, files in os.walk(backups) for f in files))
+
+    def test_crews_builtin_skills_are_never_adopted(self):
+        self.spec()
+        folder = os.path.dirname(self.skill_file())
+        os.makedirs(folder)
+        open(self.skill_file(), "w").write("built-in text")
+        open(os.path.join(folder, ".builtin-skill-provenance"), "w").write("2:abc\n")
+        for flags in ((), ("--adopt",), ("--adopt", "--force")):
+            code, text = self.run_cli("apply", "-y", *flags)
+            self.assertEqual(code, 1, flags)
+            self.assertIn("one of Crew's built-in skills", text)
+        self.assertEqual(open(self.skill_file()).read(), "built-in text")
+
+    def test_adopt_keeps_the_execute_permission_of_a_bundled_script(self):
+        script = os.path.join(self.config, "tool.py")
+        open(script, "w").write("print('hi')\n")
+        os.chmod(script, 0o755)
+        self.spec(files={"scripts/tool.py": "tool.py"})
+        self.run_cli("apply", "-y")
+        installed = os.path.join(os.path.dirname(self.skill_file()), "scripts", "tool.py")
+        os.chmod(installed, 0o600)                                              # permission lost, content identical
+        code, text = self.run_other(self.other_config_folder(), "apply", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertTrue(os.access(installed, os.X_OK))
+
     def test_drift_needs_force_even_when_content_matches_the_spec(self):
         self.spec()
         self.run_cli("apply", "-y")
@@ -1418,6 +1489,47 @@ class CrewServerFallback(unittest.TestCase):
             code, out = self.run_cli("validate")
             self.assertEqual(code, 1, bad)
             self.assertIn("crew_server_commands", out, bad)
+
+
+class AdoptAgentFiles(unittest.TestCase):
+    """A second config folder has no state of its own; files that already match are adopted, others still conflict."""
+
+    def setUp(self):
+        self.env = Env()
+        self.addCleanup(self.env.close)
+        self.env.agent("a")
+        self.assertEqual(self.env.run("apply", "--yes")[0], 0)
+        self.other = os.path.join(self.env.root, "crew2")
+        shutil.copytree(self.env.cfg, self.other, ignore=shutil.ignore_patterns(".crewctl"))
+
+    def run_other(self, *argv):
+        buffer = io.StringIO()
+        base = ["-c", self.other, "--agents-dir", self.env.agents, "--crew-home", self.env.crew_home, "--no-color"]
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            code = cli.main(base + list(argv))
+        return code, buffer.getvalue()
+
+    def test_identical_file_from_another_config_folder_is_adopted_not_a_conflict(self):
+        path = self.env.agent_file("a")
+        before = os.stat(path).st_mtime_ns
+        code, text = self.run_other("plan")
+        self.assertEqual(code, 0, text)
+        self.assertIn("adopt", text)
+        self.assertNotIn("CONFLICT", text)
+        code, text = self.run_other("apply", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertIn("1 adopted", text)
+        self.assertEqual(os.stat(path).st_mtime_ns, before)                    # nothing was written
+        self.assertIn("No changes", self.run_other("plan")[1])
+
+    def test_a_different_file_is_still_a_conflict_and_the_message_explains_the_per_folder_state(self):
+        with open(self.env.agent_file("a"), "a") as handle:
+            handle.write("\n")
+        code, text = self.run_other("apply", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("state has no record", text)
+        self.assertIn("kept per config folder", text)
+        self.assertIn("crewctl import a", text)
 
 
 class Packaging(unittest.TestCase):

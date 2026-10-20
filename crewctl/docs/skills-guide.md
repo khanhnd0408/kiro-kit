@@ -93,7 +93,7 @@ Where it writes: `skills_dir` in `crewctl.json` (default `<crew home>/skills`, w
 
 Safety rules, the same as for agents:
 
-- A folder crewctl did not create is never touched, even with `--force`. That includes Crew's built-in skills, so pick another name.
+- A folder that crewctl has no record of creating **in this config folder** is not overwritten, even with `--force`. The record is kept per config folder (in `.crewctl/skills.json`), so a new or copied config folder starts with no record. If the folder's files are exactly what the config would write, crewctl adopts it without writing anything. If they differ, `crewctl skills apply --adopt` takes it over after saving the old files. Crew's built-in skills (folders that carry a `.builtin-skill-provenance` file) are never adopted, so pick another name for your own.
 - If a file crewctl wrote was edited by hand, `apply` stops and shows it. `--force` overwrites it and keeps a copy under `.crewctl/backups/`.
 - Removing a spec and running `apply` deletes only the files crewctl wrote.
 - `apply` runs the lint first and refuses on errors (bad name, no description, over the size cap, a credential).

@@ -61,6 +61,7 @@ class SkillChange:
     notes: list = field(default_factory=list)
     blockers: list = field(default_factory=list)    # reasons this cannot be applied without --force
     hard: list = field(default_factory=list)       # reasons that --force never overrides
+    adoptable: list = field(default_factory=list)  # an existing folder crewctl has no record of; --adopt takes it over
 
 
 def skills_state_path(config_dir):
@@ -288,6 +289,26 @@ def _current_sha(path):
         return None
 
 
+BUILTIN_MARKER = ".builtin-skill-provenance"
+
+
+def _classify_existing(change, dest, files, spec):
+    """A skill folder exists that this config folder's state does not list: built-in, identical, or different."""
+    if os.path.exists(os.path.join(dest, BUILTIN_MARKER)):
+        change.hard.append(f"'{spec.name}' is one of Crew's built-in skills; pick another name")
+        return
+    different = [rel for rel, data in files.items() if _current_sha(os.path.join(dest, rel)) != sha256_bytes(data)]
+    if not different:
+        change.action = "adopt"
+        change.notes.append("the folder already holds exactly these files; crewctl will take it over without writing anything")
+        return
+    change.adoptable.append(
+        f"{dest} exists and crewctl has no record of creating it in this config folder (its record is kept per config folder, in "
+        f"{os.path.join('.crewctl', 'skills.json')}; if you applied from another config folder, use that one). "
+        f"{len(different)} file(s) differ from the config: {', '.join(sorted(different)[:3])}. "
+        "Add --adopt to take it over (the old files are saved first), or pick another name")
+
+
 def build_skill_plan(settings, specs, state, targets=None):
     changes = []
     wanted = set(targets or [])
@@ -300,7 +321,7 @@ def build_skill_plan(settings, specs, state, targets=None):
         entry = state.get(spec.name)
         if entry is None:
             if os.path.exists(dest):
-                change.hard.append(f"{dest} exists and was not created by crewctl (a built-in or hand-made skill); pick another name")
+                _classify_existing(change, dest, files, spec)
             changes.append(change)
             continue
         if entry.get("dir") != dest:
@@ -340,29 +361,41 @@ def _prune_empty(folder):
         pass
 
 
-def apply_skill_plan(config_dir, settings, specs, changes, force=False, log=print, break_lock=False):
+def apply_skill_plan(config_dir, settings, specs, changes, force=False, log=print, break_lock=False, adopt=False):
     """Write the skill folders. Returns counts. Raises SkillsBlocked before writing anything if not allowed."""
     problems = []
     for change in changes:
         problems += [f"{change.name}: {m}" for m in change.hard]
         if not force:
             problems += [f"{change.name}: {m} (use --force to overwrite; a backup is kept)" for m in change.blockers]
+        if not adopt:
+            problems += [f"{change.name}: {m}" for m in change.adoptable]
     by_name = {s.name: s for s in specs}
     for change in changes:
-        if change.action in ("create", "update") and not change.hard:
+        if change.action in ("create", "update", "adopt") and not change.hard and (adopt or not change.adoptable):
             for item in lint_rendered(by_name[change.name], change.files):
                 if item.level == "error":
                     problems.append(f"{change.name}: {item.message}")
     if problems:
         raise SkillsBlocked("cannot apply:\n  " + "\n  ".join(problems))
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    done = {"create": 0, "update": 0, "delete": 0}
+    done = {"create": 0, "update": 0, "delete": 0, "adopt": 0}
     with FileLock(skills_lock_path(config_dir), break_lock=break_lock):
         state = load_skills_state(config_dir)
         for change in changes:
             if change.action == "noop":
                 continue
             label = lambda rel: f"skill-{change.name}--{rel.replace('/', '__')}"
+            if change.action == "adopt":
+                for rel in change.executable:
+                    target = os.path.join(change.dest, rel)
+                    os.chmod(target, os.stat(target).st_mode | 0o100)
+                state[change.name] = {"dir": change.dest, "applied_at": now_iso(),
+                                      "files": {rel: sha256_bytes(data) for rel, data in change.files.items()},
+                                      "executable": sorted(change.executable)}
+                log(f"  adopted: {change.name} ({change.dest}) - already identical")
+                done["adopt"] += 1
+                continue
             if change.action in ("create", "update"):
                 crew_dest = by_name[change.name].destination == "crew"
                 os.makedirs(change.dest, mode=0o700 if crew_dest else 0o755, exist_ok=True)

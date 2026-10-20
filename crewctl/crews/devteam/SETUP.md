@@ -231,7 +231,7 @@ What the two latest updates change for you: every prompt now ends with the langu
 |---|---|---|
 | `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet, or left the entry out | Run `crewctl crew-servers` and follow it (Step 2) |
 | `model ... is not available` or a model error in `models` | The model name or your plan does not match | Do Steps 3 and 4 |
-| `exists and was not created by crewctl` (skills) | A skill with that name is already in the folder | Rename the skill in `$CREWCTL_DIR/skills/<name>.skill.json` (and in the agent files that list it), or remove the old one yourself |
+| `exists and crewctl has no record of creating it` (skills or agent files) | crewctl remembers what it created **per config folder** (in `<folder>/.crewctl/`). You are now using a different config folder than the one that created these files (for example the team folder in the repository first, then your own copy in `~/crew`) | Use the same folder as before (`export CREWCTL_DIR=...`). Or let this folder take them over: identical files are adopted automatically, and for skills that differ add `--adopt` (`crewctl skills apply --adopt`; old files are saved). For agent files that differ use `crewctl import NAME`. Crew's own built-in skills are never adopted: rename your skill |
 | `changed outside crewctl` | Someone edited a generated file by hand | Look at the file; if you want the config to win, add `--force` (a backup is kept) |
 | `state is locked` | An earlier run was cut off | Add `--break-lock` if no other crewctl is running |
 | Agents are in `kirocrew agent list` but Crew never picks them | Description and triggers are empty | Step 9 |

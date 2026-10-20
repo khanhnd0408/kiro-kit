@@ -113,7 +113,7 @@ def render_plan(ctx, plan, out, with_registration=True):
     print(f"Plan setting:  {ctx.settings.plan}")
     print()
     symbols = {"create": ("+", out.green), "update": ("~", out.yellow), "replace": ("-/+", out.yellow),
-               "delete": ("-", out.red), "noop": (" ", out.dim)}
+               "delete": ("-", out.red), "noop": (" ", out.dim), "adopt": ("=", out.cyan)}
     for change in plan.changes:
         if change.action == "noop" and not change.conflict:
             continue
@@ -136,7 +136,7 @@ def render_plan(ctx, plan, out, with_registration=True):
                 print(f"    {line}")
         print()
     counts = plan.counts()
-    summary = ", ".join(f"{counts.get(a, 0)} to {a}" for a in ("create", "update", "replace", "delete"))
+    summary = ", ".join(f"{counts.get(a, 0)} to {a}" for a in ("create", "update", "replace", "delete", "adopt"))
     if not plan.has_changes():
         print(out.bold("No changes to the agent files.") + f" ({counts.get('noop', 0)} in sync)")
     else:
@@ -392,7 +392,8 @@ def _skills_context(args, out):
 
 
 def _render_skill_changes(changes, out):
-    marks = {"create": out.green("+ create"), "update": out.yellow("~ update"), "delete": out.red("- delete"), "noop": out.dim("  no change")}
+    marks = {"create": out.green("+ create"), "update": out.yellow("~ update"), "delete": out.red("- delete"), "noop": out.dim("  no change"),
+             "adopt": out.cyan("= adopt")}
     for change in changes:
         print(f"{marks[change.action]}  {change.name}  ->  {_tilde(change.dest)}")
         if change.action in ("create", "update"):
@@ -404,6 +405,8 @@ def _render_skill_changes(changes, out):
             print(out.dim(f"      note: {note}"))
         for reason in change.hard:
             print(out.red(f"      blocked: {reason}"))
+        for reason in change.adoptable:
+            print(out.yellow(f"      needs --adopt: {reason}"))
         for reason in change.blockers:
             print(out.yellow(f"      drift: {reason}"))
 
@@ -476,11 +479,12 @@ def cmd_skills(args):
             return 1
     try:
         done = apply_skill_plan(config, settings, specs if args.skills_action == "apply" else [], changes,
-                                force=args.force, break_lock=args.break_lock)
+                                force=args.force, break_lock=args.break_lock, adopt=getattr(args, "adopt", False))
     except SkillsBlocked as error:
         print(out.red(str(error)))
         return 1
-    print(f"\n{args.skills_action.capitalize()} complete: {done['create']} created, {done['update']} updated, {done['delete']} deleted.")
+    print(f"\n{args.skills_action.capitalize()} complete: {done['create']} created, {done['update']} updated, {done['delete']} deleted"
+          + (f", {done['adopt']} adopted." if done["adopt"] else "."))
     if done["create"] or done["update"]:
         print(out.dim(RELOAD_NOTE))
     return 0
@@ -866,7 +870,7 @@ def cmd_apply(args):
     print()
     done = apply_plan(ctx, plan, force=args.force, break_lock=args.break_lock)
     print(out.green(f"\nApply complete: {done['create']} created, {done['update']} updated, {done['replace']} replaced, "
-                    f"{done['delete']} deleted."))
+                    f"{done['delete']} deleted" + (f", {done['adopt']} adopted." if done.get("adopt") else ".")))
     plan_after = build_plan(ctx, set(args.target) or None)
     if any(r.kind != "in-sync" for r in plan_after.registrations):
         render_registration(ctx, plan_after, out)
@@ -1090,6 +1094,7 @@ def build_parser():
     p.add_argument("--show", action="store_true", help="plan: print the SKILL.md that would be written")
     p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
     p.add_argument("--force", action="store_true", help="overwrite or delete files changed outside crewctl (backups are kept)")
+    p.add_argument("--adopt", action="store_true", help="apply: take over an existing skill folder crewctl has no record of (old files are saved first); never for Crew's built-in skills")
     p.add_argument("--break-lock", action="store_true", help="remove a stuck state lock")
     p.set_defaults(func=cmd_skills)
     p = with_common(sub.add_parser("plan", help="show what apply would do"))
