@@ -649,10 +649,25 @@ class Registration(unittest.TestCase):
         env.agent("a", display_name="Agent A", triggers="when needed", reasoning_effort="high", starred=True)
         action = self.reg(env, "a")
         self.assertEqual(action.kind, "register")
-        self.assertEqual(action.commands, [["agent", "create", "--name", "a", "--kiro-agent", "a", "--workspace", "default"]])
-        self.assertEqual(action.dashboard["display_name"], "Agent A")
-        self.assertEqual(action.dashboard["reasoning_effort"], "high")
-        self.assertTrue(action.dashboard["starred"])
+        self.assertEqual(action.commands[0], ["agent", "create", "--name", "a", "--kiro-agent", "a", "--workspace", "default"])
+        # the rest is written by Crew's own CLI, with every value JSON-encoded so text stays text
+        self.assertIn(["config", "set", "agents.a.display_name", '"Agent A"'], action.commands)
+        self.assertIn(["config", "set", "agents.a.triggers", '"when needed"'], action.commands)
+        self.assertIn(["config", "set", "agents.a.reasoning_effort", '"high"'], action.commands)
+        self.assertIn(["config", "set", "agents.a.starred", "true"], action.commands)
+        self.assertEqual(action.dashboard, {})
+
+    def test_text_that_looks_like_a_number_or_boolean_is_written_as_text(self):
+        env = self.make()
+        env.agent("a", description="true", triggers="123")
+        action = self.reg(env, "a")
+        self.assertIn(["config", "set", "agents.a.description", '"true"'], action.commands)
+        self.assertIn(["config", "set", "agents.a.triggers", '"123"'], action.commands)
+
+    def test_name_with_a_dot_is_left_for_the_dashboard(self):
+        commands, left = engine.config_set_commands("v1.agent", {"description": "d", "starred": True, "other": 1})
+        self.assertEqual(commands, [])
+        self.assertEqual(left, {"description": "d", "starred": True, "other": 1})
 
     def test_missing_workspace_is_created_first(self):
         env = self.make()
@@ -665,7 +680,8 @@ class Registration(unittest.TestCase):
         env = self.make(workspaces={"default": {"dir": "workspace"}, "logs": {"dir": "workspace-logs"}})
         env.agent("a", workspace="logs")
         action = self.reg(env, "a")
-        self.assertEqual(len(action.commands), 1)
+        self.assertEqual(action.commands[0][:2], ["agent", "create"])
+        self.assertNotIn(["workspace", "create"], [c[:2] for c in action.commands])
 
     def test_matching_record_is_in_sync(self):
         env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
@@ -683,8 +699,10 @@ class Registration(unittest.TestCase):
         env.agent("a", display_name="Agent A")
         action = self.reg(env, "a")
         self.assertEqual(action.kind, "update")
-        self.assertEqual(action.commands, [["agent", "update", "a", "--kiro-agent", "a"]])
-        self.assertEqual(set(action.dashboard), {"display_name", "triggers"})
+        self.assertEqual(action.commands, [["agent", "update", "a", "--kiro-agent", "a"],
+                                           ["config", "set", "agents.a.display_name", '"Agent A"'],
+                                           ["config", "set", "agents.a.triggers", '"t"']])
+        self.assertEqual(action.dashboard, {})
         self.assertTrue(any("pins model 'glm-5'" in n for n in action.notes))
 
     def test_removed_crewmate_with_leftover_record_is_flagged(self):
@@ -801,7 +819,7 @@ class Removal(unittest.TestCase):
         self.assertIn("agent delete a", text)
         self.assertEqual(self.ran(), [])                                 # printing never runs anything
         self.assertEqual(env.run("register", "--run", "--yes")[0], 0)
-        self.assertEqual(self.ran(), ["agent delete a"])
+        self.assertEqual(self.ran(), ['config set agents.b.description "d"', 'config set agents.b.triggers "t"', "agent delete a"])
 
     def test_destroy_target_removes_one_file_and_prints_the_record_command(self):
         env = self.make()

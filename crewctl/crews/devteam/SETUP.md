@@ -129,14 +129,17 @@ kirocrew agent list
 ```
 All ten names should be in the list.
 
-## Step 9. Fill in the descriptions in the dashboard
+## Step 9. Check that the descriptions are filled in
 
-The command above can only set the name. Crew picks a crewmate by its **description** and **triggers**, so set them:
+Step 8 already set each crewmate's display name, description and triggers (crewctl runs `kirocrew config set agents.<name>.description ...` for you). Crew picks a crewmate by its description and triggers, so confirm them:
+```bash
+kirocrew config get agents.orchestrator-agent
+```
+You should see `display_name`, `description` and `triggers` filled in. Then open the dashboard (Agent Capabilities, then Agents) and check that no crewmate says "No description".
 
-1. Open the Crew dashboard, go to Agent Capabilities, then Agents.
-2. Click a crewmate. Enter the **display name**, **description** and **triggers**.
-3. The exact text is printed by `python3 -m crewctl -c crews/devteam register` under each crewmate (the lines `display_name =`, `description =`, `triggers =`). The triggers there are shortened with `...` on screen; the full text is in the crewmate's file in `crews/devteam/<name>.agent.json`. Copy from the file.
-4. Do this for all ten. The `orchestrator-agent` matters most.
+If one is empty, run `python3 -m crewctl -c crews/devteam register` again. It lists what is still missing; `register --run` fixes it.
+
+**About the "Capabilities" and template-inheritance fields.** The Capabilities page shows each crewmate's tools, skills, MCP servers, prompt and model, read from its agent file. A crewmate made this way points straight at its own template, which Crew calls "shared" mode, so nothing is inherited from a parent and the "forked from" field stays empty. Inheritance only exists once you open a crewmate's Capabilities page and enroll it, which makes Crew keep a private copy that inherits from the template. Skills appear on that page only after Step 6 has installed them. Enrolling is optional and has a side effect: see `docs/how-crewmates-work.md`, section "Capabilities and inheritance".
 
 ## Step 10. Inspector settings (only if you use `inspector-agent`)
 

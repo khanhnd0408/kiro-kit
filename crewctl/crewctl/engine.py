@@ -16,6 +16,7 @@ crewctl writes only the Kiro agent files. For the crew records (Crew's own confi
 only works out the `kirocrew` commands to run; see plan_registration.
 """
 
+import json
 import os
 import shlex
 import subprocess
@@ -188,6 +189,25 @@ def build_plan(ctx, targets=None):
     return plan
 
 
+SETTABLE_BY_CONFIG = ("display_name", "description", "triggers", "reasoning_effort", "session_color", "starred")
+
+
+def config_set_commands(name, wanted):
+    """`kirocrew config set agents.<name>.<field> <value>` for each field. Returns (commands, leftovers).
+
+    Crew's own CLI writes these fields (no dashboard, no token). Values are JSON-encoded so that text like "123" or
+    "true" stays text. A name with a dot cannot be written as a dotted key, so those fields are left for the dashboard.
+    """
+    if "." in name:
+        return [], dict(wanted)
+    commands = []
+    for key in SETTABLE_BY_CONFIG:
+        if key in wanted:
+            value = wanted[key]
+            commands.append(["config", "set", f"agents.{name}.{key}", "true" if value is True else json.dumps(value, ensure_ascii=False)])
+    return commands, {k: v for k, v in wanted.items() if k not in SETTABLE_BY_CONFIG}
+
+
 def plan_registration(ctx, specs, removed_names):
     """Work out what is left to do in Crew itself. Nothing here writes anything."""
     view = ctx.view
@@ -209,14 +229,14 @@ def plan_registration(ctx, specs, removed_names):
         if not view.config_found:
             action.kind = "unknown"
             action.notes.append(f"could not read Crew's config ({view.error}); showing the commands for a fresh crewmate")
+            set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
             action.commands = commands_prefix + [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
-                                                  "--workspace", spec.workspace]]
-            action.dashboard = dashboard_wanted
+                                                  "--workspace", spec.workspace]] + set_commands
         elif record is None:
             action.kind = "register"
+            set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
             action.commands = commands_prefix + [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
-                                                  "--workspace", spec.workspace]]
-            action.dashboard = dashboard_wanted
+                                                  "--workspace", spec.workspace]] + set_commands
         else:
             diffs = record_differences(desired, record)
             if record.get("model"):
@@ -234,7 +254,8 @@ def plan_registration(ctx, specs, removed_names):
             other = {f: v for f, v in diffs.items() if f not in CLI_FIELDS}
             if other:
                 action.kind = "update" if action.kind == "in-sync" else action.kind
-                action.dashboard = {f: wanted for f, (wanted, actual) in other.items()}
+                set_commands, action.dashboard = config_set_commands(spec.name, {f: wanted for f, (wanted, actual) in other.items()})
+                action.commands = action.commands + set_commands
                 action.notes.extend(f"{f} is currently {actual!r}" for f, (wanted, actual) in other.items())
         actions.append(action)
     for name in removed_names:

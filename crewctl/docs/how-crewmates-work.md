@@ -78,14 +78,14 @@ From the record's own help text: the crew record's `model`, then the agent file'
 | `kirocrew agent create --name N --kiro-agent K --workspace W` | Only the name, the agent file and the workspace | Creates the private memory store too. Also: `agent list`, `agent update`, `agent delete`, `workspace create`. |
 | `POST /api/agents` on the local gateway | Every field above | Needs the gateway running and an access token. crewctl does not use it. |
 
-The CLI cannot set `display_name`, `description` or `triggers`. After `agent create` you set those in the dashboard.
+`kirocrew agent create` cannot set `display_name`, `description` or `triggers`, but `kirocrew config set agents.<name>.description '"text"'` can (Crew's own CLI, no token; the value must be JSON-quoted or text like `123` or `true` is stored as a number or boolean). crewctl uses that, so `register --run` leaves the record filled in.
 
 ## 4. What crewctl does about all this
 
 crewctl manages the **agent files**, because those are where your prompts, tools and models live, and they are plain files. It treats the crew records differently on purpose:
 
 - Creating a record also creates the crewmate's private memory. Crew does that in its own code, under its own lock. Writing `config.json` by hand would skip it and could race with the running gateway.
-- So crewctl only **reads** Crew's `config.json` (the `agents` and `workspaces` sections, never the tokens next to them) and works out which `kirocrew` commands and dashboard fields are still needed. It prints them, or runs them if you ask (`crewctl register --run`).
+- So crewctl only **reads** Crew's `config.json` (the `agents` and `workspaces` sections, never the tokens next to them) and works out which `kirocrew` commands are still needed. It prints them, or runs them if you ask (`crewctl register --run`).
 - crewctl never starts `kiro-cli`, the gateway, or a model.
 
 ## 5. Not verified
@@ -104,3 +104,21 @@ I read code and docs but ran nothing, so these are open:
 - [Custom agent configuration reference](https://kiro.dev/docs/custom-agents/configuration-reference/)
 - Kiro Crew issue 10041 (permissions need kiro-cli 2.23.0 or newer)
 - Crew's installed source, read only: `config/sections.py` (record fields), `cli.py` and `cli_commands.py` (agent create/update/delete), `members.py` (name rules), `agent_files.py` (owned and reserved names), `agents_janitor.py`, `dashboard/handlers/agents.py` (create route).
+
+## Capabilities and inheritance (read from Crew 0.8.0's source)
+
+A crewmate's **description**, **triggers**, **display name**, model and reasoning effort live in its Crew record. Its **capabilities** (tools, allowed tools, MCP servers, skills, prompt, model, resources) live in its agent file. The Capabilities page shows the second group.
+
+Crew has two modes for that page, decided per crewmate:
+
+| Mode | When | What the page shows |
+|---|---|---|
+| `shared` | The crewmate's template is an ordinary file in `~/.kiro/agents/` and nobody enrolled it. This is what crewctl creates. | Every section read from the file, each marked inherited. No parent, so "forked from" is empty. |
+| `inherited` | You enrolled the crewmate on the Capabilities page. Crew makes a private copy of the template for that crewmate, records which template it was copied from, and keeps a saved "intent" with your reviewed changes on top. | Rows marked inherited, local or removed, relative to the parent template. |
+
+What enrolling changes, from `agent_capabilities.py` and `agent_state.py`:
+- Crew records the lineage (`forked_from`, `private_to`) and the reviewed state in `~/.kiro/crew/agent_model_state.json`, not in the agent file.
+- If the private copy is later changed outside the Capabilities page, Crew refuses to start new chats for that crewmate ("agent file changed outside the Capabilities page") until the owner reviews and saves. If the parent template changes, the page shows the change for review.
+- Older write paths are refused for an enrolled template (`capabilities_editor_required`).
+
+For crewctl this means: do not enroll a crewmate whose agent file crewctl keeps rewriting, unless you accept reviewing each change on the page. crewctl cannot enroll for you. The Capabilities service needs a preview step that the owner confirms, and that is by design. Skills show on the page only if they are installed (the page matches the `skill://~/.kiro/crew/skills/<name>/SKILL.md` entries against the installed skills).

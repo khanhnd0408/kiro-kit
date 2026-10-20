@@ -108,7 +108,7 @@ Only `name`, `tools` and a prompt are required. Start from `templates/agent.temp
 | `skills` | agent file (`resources`) | Optional. Paths to `SKILL.md` files; each becomes a `skill://` entry. |
 | `crew_servers` | agent file | Optional. `["core"]` lets a crewmate spawn others and use Crew memory; `["cron"]` adds schedules. crewctl finds the command on the machine it runs on. |
 | `extra_agent_fields` | agent file | Any other key you want copied through. |
-| `display_name`, `description`, `triggers`, `reasoning_effort`, `session_color`, `starred` | crew record | Set in the dashboard. crewctl tells you the values. |
+| `display_name`, `description`, `triggers`, `reasoning_effort`, `session_color`, `starred` | crew record | Set by `register --run`, which calls `kirocrew config set agents.<name>.<field>`. A name containing a dot cannot be written that way and is left for the dashboard. |
 | `workspace`, `workspace_dir` | crew record | The Crew workspace to work in. |
 
 Values in `crew/_defaults.json` fill in any field an agent file leaves out. Files whose names start with `_` are ignored.
@@ -126,7 +126,7 @@ Values in `crew/_defaults.json` fill in any field an agent file leaves out. File
 | `apply` | Write the agent files and update the state. Asks for `yes`; `-y` skips that. |
 | `destroy` | Remove the agent files crewctl manages. Never deletes your config files. `--target NAME` for one; `--delete-records` also deletes the Crew records. |
 | `status` | One line per crewmate: file state and Crew registration. |
-| `register` | Print the `kirocrew` commands and dashboard values still needed. `--run` runs them. |
+| `register` | Print the `kirocrew` commands still needed (create the record, then set its display name, description and triggers). `--run` runs them. |
 | `import NAME` | Adopt an agent file that already exists. |
 | `state list`, `show`, `rm`, `mv` | Look at or edit the state. |
 
@@ -191,10 +191,10 @@ It writes the **agent files** only. The **crew record** (the entry in Crew's own
 ```bash
 python3 -m crewctl -c crew register          # shows, for each crewmate:
 #   kirocrew agent create --name log-analyst --kiro-agent log-analyst --workspace default
-#   then in the dashboard, set: triggers = '...', display_name = '...'
+#   kirocrew config set agents.my-agent.display_name '"My Agent"'
 ```
 
-Run those yourself, or use `register --run` when you're ready. `kirocrew agent create` can only set the name, agent file and workspace; the display name, description and triggers are set in the dashboard. Without `triggers`, Crew's orchestrator never offers the crewmate.
+Run those yourself, or use `register --run` when you're ready. `kirocrew agent create` only sets the name, agent file and workspace, so crewctl follows it with `kirocrew config set agents.<name>.<field> <json text>` for the display name, description and triggers. Without `triggers`, Crew's orchestrator never offers the crewmate.
 
 ## Safety
 

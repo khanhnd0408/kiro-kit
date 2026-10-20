@@ -60,7 +60,7 @@ python3 -m crewctl -c crews/devteam apply
 python3 -m crewctl -c crews/devteam register             # prints the kirocrew commands; add --run to execute them
 ```
 
-Then, in the Crew dashboard, set each crewmate's display name, description and triggers if `register` tells you to. To remove everything: `skills destroy`, `destroy --delete-records`.
+`register --run` also fills in each crewmate's display name, description and triggers. To remove everything: `skills destroy`, `destroy --delete-records`.
 
 The agent files point at skills in `~/.kiro/crew/skills/`. If you set another `skills_dir`, edit the paths in the `skills` lists.
 
