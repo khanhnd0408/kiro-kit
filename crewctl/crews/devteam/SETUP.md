@@ -190,8 +190,22 @@ Use the dashboard chat for each.
 2. **Confidence script.** Pick `genai-agent` and send: `Should I use RAG or fine-tuning for a support bot? Use your checklist.` The answer must contain the words `confidence`, `coverage` and `open items` copied from a script, not a percentage the model made up. If it gives its own percentage, the skill was not loaded; check Step 6.
 3. **The loop.** Open a normal dashboard chat with `orchestrator-agent` (a loop cannot be armed from a cron job or a subagent) and send:
    `Ask go-agent to write and run a tiny Go program that sleeps 150 seconds and then prints done. Check every 30 seconds, up to 10 rounds.`
-   You should see the orchestrator call `spawn_run`, then `monitor_start` (with `interval_secs` 30 and `max_cycles` 10), then end its turn. About every 30 seconds the conversation gets a new turn with a line such as `Cycle 2: <id> go-agent RUNNING 70s, 6 turns, last tool ...`. The goal button (target icon) in the message box shows the loop and the countdown. When the program has finished, the last turn is the final report in Vietnamese and a `monitor_stop` call. It must not call the `wait` tool at any point; open the session transcript and search for `wait` to check. If `monitor_start` is refused, tell me the reason it gives.
+   You should see the orchestrator call `spawn_run`, then `monitor_start` (with `interval_secs` 30 and `max_cycles` 10), then end its turn. About every 30 seconds the conversation gets a new turn with a line such as `Cycle 2: <id> go-agent RUNNING 70s, 6 turns, last tool ...`. The goal button (target icon) in the message box shows the loop and the countdown. When the program has finished, the last turn is the final report in Vietnamese and an `autonudge_stop` call. It must not call the `wait` tool at any point; open the session transcript and search for `wait` to check. If `monitor_start` is refused, tell me the reason it gives.
 4. **Language.** Pick `orchestrator-agent` and write to it in Vietnamese, for example: `Nhờ python-agent viết hàm kiểm tra số nguyên tố, rồi tóm tắt cho tôi.` The final answer and any question card must be in Vietnamese. Then open the session's transcript (Sessions in the dashboard) and look at the brief sent to `python-agent`: it must start with `SUBAGENT TASK from orchestrator-agent. Reply in English only` and be entirely English, and so must `python-agent`'s reply to the orchestrator and the code comments it wrote. If a brief or a tool call is in Vietnamese, tell me which agent did it.
+
+## If the orchestrator still uses `wait`
+
+Run these on the machine, then tell me the outputs and which agent made the `wait` call (open the session transcript):
+```bash
+grep -n '"@kirocrew-core/wait"\|disabledTools\|monitor_start' ~/.kiro/agents/orchestrator-agent.json
+kirocrew config get agent.acp_backend
+```
+A correct file has `"disabledTools": ["wait"]` and `@kirocrew-core/monitor_start`, and no `@kirocrew-core/wait`. The usual reasons for a `wait` call, in order:
+1. **The agent file on this machine is the old one.** Run `crewctl plan`; it should show no changes. If it shows the orchestrator changing, run `crewctl apply`.
+2. **The chat is old.** A conversation that was open before the update keeps its old prompt. Start a new chat.
+3. **You are talking to another agent.** Crew's default agent and its conductor use `wait` by design. Pick `orchestrator-agent` in the chat's agent selector.
+4. **The conversation cannot hold a loop.** `monitor_start` is refused outside dashboard chat, Slack, Discord and Webex, and while another loop is active. The orchestrator then ends its turn instead (it must not wait); the refusal text is in the transcript.
+5. **A different Crew backend.** If `agent.acp_backend` is not empty (for example `kas`, `claude`, `codex`), Crew passes tools to the agent differently. `disabledTools` is the setting that works on all of them; if `wait` is still offered, tell me the backend.
 
 ## Updating to a newer version of the team (after `git pull`)
 

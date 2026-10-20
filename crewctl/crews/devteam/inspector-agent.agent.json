@@ -24,6 +24,9 @@
     "core": {
       "tools": [
         "skill_search"
+      ],
+      "disabledTools": [
+        "wait"
       ]
     }
   },

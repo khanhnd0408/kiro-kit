@@ -25,8 +25,8 @@
     "@kirocrew-core/ask_question",
     "@kirocrew-core/monitor_start",
     "@kirocrew-core/monitor_update",
-    "@kirocrew-core/monitor_stop",
-    "@kirocrew-core/monitor_inspect"
+    "@kirocrew-core/monitor_inspect",
+    "@kirocrew-core/autonudge_stop"
   ],
   "crew_servers": {
     "core": {
@@ -40,8 +40,11 @@
         "ask_question",
         "monitor_start",
         "monitor_update",
-        "monitor_stop",
-        "monitor_inspect"
+        "monitor_inspect",
+        "autonudge_stop"
+      ],
+      "disabledTools": [
+        "wait"
       ]
     }
   },

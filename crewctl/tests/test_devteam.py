@@ -328,10 +328,18 @@ class Pack(Tmp):
             for script in os.listdir(os.path.join(self.skills, name, "scripts")) if os.path.isdir(os.path.join(self.skills, name, "scripts")) else []:
                 self.assertTrue(os.access(os.path.join(self.skills, name, "scripts", script), os.X_OK), (name, script))
 
+    def test_the_wait_tool_is_switched_off_for_every_agent_not_just_left_out(self):
+        for name in os.listdir(PACK):
+            if not name.endswith("-agent.agent.json"):
+                continue
+            core = json.load(open(os.path.join(PACK, name)))["crew_servers"]["core"]
+            self.assertEqual(core.get("disabledTools"), ["wait"], name)
+            self.assertNotIn("wait", core["tools"], name)
+
     def test_orchestrator_loop_is_crews_monitor_loop_and_never_the_wait_tool(self):
         agent = json.load(open(os.path.join(PACK, "orchestrator-agent.agent.json")))
         prompt = self.compiled_prompts()["orchestrator-agent"]
-        monitor = ("monitor_start", "monitor_update", "monitor_stop", "monitor_inspect")
+        monitor = ("monitor_start", "monitor_update", "monitor_inspect", "autonudge_stop")
         tools = agent["crew_servers"]["core"]["tools"]
         for tool in monitor + ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "ask_question"):
             self.assertIn(tool, tools)
@@ -340,13 +348,15 @@ class Pack(Tmp):
         # no wait tool, no shell, no script: the loop is Crew's own
         self.assertNotIn("wait", tools)
         self.assertNotIn("@kirocrew-core/wait", agent["allowed_tools"])
+        self.assertNotIn("monitor_stop", prompt)       # Crew's guidance for monitor_start loops is autonudge_stop
         self.assertNotIn("execute_bash", agent["tools"])
         self.assertNotIn("toolsSettings", agent.get("extra_agent_fields", {}))
         self.assertNotIn("skills", agent)
         self.assertIn("You never use the wait tool", prompt)
         self.assertNotIn("Call wait with", prompt)
         for needle in ("monitor_start", "interval_secs = CHECK_EVERY_SECONDS", "max_cycles = MAX_ROUNDS", "gate = false",
-                       "monitor_inspect", "monitor_stop", "monitor_update", "END YOUR TURN", "EXIT:"):
+                       "max_runtime_secs = CHECK_EVERY_SECONDS x MAX_ROUNDS + 600", "monitor_inspect", "autonudge_stop",
+                       "monitor_update", "END YOUR TURN", "EXIT:", "short task (under 30 minutes)", "even for a 2-minute job"):
             self.assertIn(needle, prompt, needle)
         # nothing of the earlier script design is left anywhere in the pack
         for folder, dirs, files in os.walk(PACK):
