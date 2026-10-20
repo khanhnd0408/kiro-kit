@@ -22,4 +22,16 @@ if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/
   echo "crewctl: '$PY' is older than Python 3.8 (or cannot run). Set CREWCTL_PYTHON to a newer one." >&2
   exit 2
 fi
-PYTHONPATH="$ROOT/crewctl${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m crewctl "$@"
+PKG="$ROOT/crewctl"
+if [ ! -f "$PKG/crewctl/__init__.py" ]; then
+  echo "crewctl: expected the package at $PKG/crewctl but it is not there." >&2
+  echo "  The launcher looked for the repository at: $ROOT" >&2
+  echo "  If you moved or copied only this file, run it from inside the kiro-kit repository instead." >&2
+  exit 2
+fi
+if [ -n "${CREWCTL_DEBUG:-}" ]; then
+  echo "crewctl: python=$(command -v "$PY") ($("$PY" --version 2>&1)) repository=$ROOT" >&2
+fi
+# Put the package folder first on the module path from inside Python, instead of relying on PYTHONPATH
+# reaching the interpreter (some conda setups and wrappers drop or rewrite it).
+exec "$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); from crewctl.cli import main; sys.exit(main(sys.argv[2:]))' "$PKG" "$@"

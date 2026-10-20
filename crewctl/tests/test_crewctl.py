@@ -1550,6 +1550,22 @@ class InstallerScript(unittest.TestCase):
         self.assertEqual(bad.returncode, 2)
         self.assertIn("CREWCTL_PYTHON", bad.stderr)
 
+    def test_launcher_does_not_depend_on_pythonpath_and_explains_a_misplaced_copy(self):
+        launcher = os.path.join(self.ROOT, "bin", "crewctl")
+        env = {**os.environ, "PYTHONPATH": "/nonexistent", "PYTHONSAFEPATH": "1"}
+        self.assertEqual(self.run_cmd([launcher, "review", "where"], cwd="/", env=env).returncode, 0)
+        debug = self.run_cmd([launcher, "--version"], env={**os.environ, "CREWCTL_DEBUG": "1"})
+        self.assertIn("repository=", debug.stderr)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        os.makedirs(os.path.join(tmp, "bin"))
+        lonely = os.path.join(tmp, "bin", "crewctl")
+        shutil.copy(launcher, lonely)
+        result = self.run_cmd([lonely, "--version"])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("it is not there", result.stderr)
+        self.assertIn(tmp, result.stderr)
+
     def test_python_dash_m_from_the_repository_root_fails_as_the_docs_warn(self):
         result = self.run_cmd([sys.executable, "-m", "crewctl", "--version"], cwd=self.ROOT)
         self.assertNotEqual(result.returncode, 0)
