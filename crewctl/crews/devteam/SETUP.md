@@ -32,6 +32,13 @@ Keep the `kiro-kit` folder where it is; the command runs the files in place. To 
 
 **Do not run `python3 -m crewctl` from the `kiro-kit` folder.** You will get `No module named crewctl`, because the module lives one level down. Either use the `crewctl` command above, or run `./bin/crewctl <command>` from `kiro-kit`, or `cd kiro-kit/crewctl` first and then `python3 -m crewctl <command>`. On Windows (no bash), `cd kiro-kit\crewctl` and use `python -m crewctl <command>`.
 
+**Option: work on your own copy of the team.** The commands below use the ready-made folder inside the repository. If you want to edit prompts or models without changing files that git tracks, make your own copy instead:
+```bash
+crewctl -c ~/crew init --team devteam      # creates ~/crew with the ten crewmates, prompts and skills
+export CREWCTL_DIR=~/crew
+```
+A plain `crewctl init` (without `--team`) only creates the starter files, so `crewctl validate` then says "no *.agent.json files found": that is expected until you add crewmates.
+
 **Tell it which team folder to use**, so you do not repeat it on every command:
 ```bash
 export CREWCTL_DIR="$PWD/crewctl/crews/devteam"

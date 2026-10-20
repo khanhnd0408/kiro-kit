@@ -22,6 +22,8 @@ Without installing: run `./bin/crewctl <command>` from this folder, or `cd crewc
 
 ## Job 1: the crew
 
+Start from the ready-made team (`crewctl -c ~/crew init --team devteam` makes your own editable copy), or from an empty folder (`crewctl -c ~/crew init`, then add `<name>.agent.json` files; until you do, `validate` says "no *.agent.json files found").
+
 ```bash
 export CREWCTL_DIR="$PWD/crewctl/crews/devteam"     # the team folder; replaces -c on every command
 crewctl validate

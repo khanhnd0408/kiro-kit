@@ -1628,5 +1628,61 @@ class ColoredHelp(unittest.TestCase):
         listed_review = {entry[0].split()[2] for _, entries in JOBS for entry in entries if entry[0].startswith("crewctl review")}
         self.assertEqual(listed_review, review)
 
+
+class InitTeams(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def run_cli(self, *argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["--no-color", *argv])
+        return code, buffer.getvalue()
+
+    def test_plain_init_says_there_are_no_crewmates_and_how_to_get_some(self):
+        folder = os.path.join(self.tmp, "c")
+        code, out = self.run_cli("-c", folder, "init")
+        self.assertEqual(code, 0)
+        self.assertIn("no crewmates yet", out)
+        self.assertIn("--team devteam", out)
+        self.assertFalse([f for f in os.listdir(folder) if f.endswith(".agent.json") and not f.startswith("_")])
+        code, out = self.run_cli("-c", folder, "validate")
+        self.assertIn("Copy _template.agent.json", out)
+
+    def test_init_team_devteam_copies_agents_prompts_skills_and_scripts_but_not_state_or_docs(self):
+        folder = os.path.join(self.tmp, "c")
+        code, out = self.run_cli("-c", folder, "init", "--team", "devteam")
+        self.assertEqual(code, 0, out)
+        agents = sorted(f for f in os.listdir(folder) if f.endswith("-agent.agent.json"))
+        self.assertEqual(len(agents), 10)
+        self.assertTrue(os.path.exists(os.path.join(folder, "prompts", "orchestrator-agent.md")))
+        self.assertTrue(os.path.exists(os.path.join(folder, "skills", "assets", "incident", "collect_evidence.py")))
+        self.assertTrue(os.access(os.path.join(folder, "skills", "assets", "incident", "collect_evidence.py"), os.X_OK))
+        for unwanted in (".crewctl", "README.md", "SETUP.md"):
+            self.assertFalse(os.path.exists(os.path.join(folder, unwanted)), unwanted)
+        self.assertIn("plan", json.load(open(os.path.join(folder, "crewctl.json"))))
+        # the copy is a working team: the skills build from it
+        with mock.patch.dict(os.environ, {"CREWCTL_SKILLS_DIR": os.path.join(self.tmp, "skills")}):
+            code, out = self.run_cli("-c", folder, "skills", "apply", "-y")
+        self.assertEqual(code, 0, out)
+
+    def test_init_is_refused_before_writing_when_the_folder_has_agents(self):
+        folder = os.path.join(self.tmp, "c")
+        os.makedirs(folder)
+        open(os.path.join(folder, "mine.agent.json"), "w").write("{}")
+        code, out = self.run_cli("-c", folder, "init", "--team", "example")
+        self.assertEqual(code, 1)
+        self.assertIn("already has agent files", out)
+        self.assertFalse(os.path.exists(os.path.join(folder, "crewctl.json")))
+
+    def test_force_keeps_other_agent_files_and_says_so(self):
+        folder = os.path.join(self.tmp, "c")
+        self.run_cli("-c", folder, "init", "--team", "devteam")
+        code, out = self.run_cli("-c", folder, "init", "--force", "--team", "example")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Kept 10 agent file(s)", out)
+        self.assertTrue(os.path.exists(os.path.join(folder, "conductor.agent.json")))
+
 if __name__ == "__main__":
     unittest.main()

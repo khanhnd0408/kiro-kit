@@ -171,12 +171,42 @@ def _confirm(args, question):
     return input(f"{question} Type 'yes' to continue: ").strip() == "yes"
 
 
+TEAMS = {"devteam": ("crews", "devteam"), "example": ("examples", "crew")}
+
+
+def _team_source(name, target, force):
+    """Find a ready-made team, and refuse early if the target folder already has agent files."""
+    kind, folder = TEAMS[name]
+    source = os.path.join(os.path.dirname(TEMPLATES), kind, folder)
+    if not os.path.isdir(source):
+        raise ApplyBlocked(f"cannot find the '{name}' team at {source}. Run crewctl from a clone of the kiro-kit repository.")
+    existing = [f for f in os.listdir(target) if f.endswith(".agent.json")] if os.path.isdir(target) else []
+    if existing and not force:
+        raise ApplyBlocked(f"{_tilde(target)} already has agent files ({', '.join(sorted(existing)[:3])}...). "
+                           "Use another folder (-c FOLDER), or add --force to overwrite files with the same names.")
+    return source
+
+
+def _copy_team(source, target):
+    """Copy a ready-made team (agent files, prompts, skills, scripts) into the config folder."""
+    shutil.copytree(source, target, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".crewctl", "__pycache__", "README.md", "SETUP.md"))
+    return sorted(f[:-len(".agent.json")] for f in os.listdir(source) if f.endswith(".agent.json"))
+
+
 def cmd_init(args):
     out = _out(args)
     target = _config_dir(args)
     if os.path.exists(os.path.join(target, "crewctl.json")) and not args.force:
         print(f"{target} already has a crewctl.json; use --force to overwrite the starter files.")
         return 1
+    team_dir = None
+    if args.team:
+        try:
+            team_dir = _team_source(args.team, target, args.force)
+        except ApplyBlocked as error:
+            print(out.red(str(error)))
+            return 1
     os.makedirs(os.path.join(target, "prompts"), exist_ok=True)
     for source, name in (("crewctl.json", "crewctl.json"), ("_defaults.json", "_defaults.json"),
                          ("agent.template.json", "_template.agent.json")):
@@ -194,7 +224,20 @@ def cmd_init(args):
     print("  _template.agent.json    copy this to <name>.agent.json for each crewmate")
     print("  prompts/                long prompts, referenced by \"prompt_file\"")
     print("  skills/                 one <name>.skill.json per skill; `crewctl skills new <name>` starts one")
-    print(out.dim("\nNext: copy the template, edit it, then `crewctl validate` and `crewctl plan`."))
+    if team_dir:
+        before = {f for f in os.listdir(target) if f.endswith(".agent.json") and not f.startswith("_")}
+        names = _copy_team(team_dir, target)
+        print(f"\nCopied the '{args.team}' team: {', '.join(names)}.")
+        kept = sorted(f[:-len(".agent.json")] for f in before if f[:-len(".agent.json")] not in names)
+        if kept:
+            print(out.yellow(f"Kept {len(kept)} agent file(s) that were already here and are not part of this team: {', '.join(kept)}."))
+        print(out.dim("Next: `crewctl validate`, then `crewctl skills apply`, `crewctl apply`, `crewctl register --run`."
+                      + (" Step-by-step: crews/devteam/SETUP.md in the repository." if args.team == "devteam" else "")))
+        return 0
+    print(out.yellow("\nThere are no crewmates yet: validate will say 'no *.agent.json files found' until you add some."))
+    print(out.dim("Either copy _template.agent.json to <name>.agent.json and edit it, or start from a ready-made team:\n"
+                  "  crewctl init --force --team devteam      (ten crewmates: orchestrator, python, go, rust, ...)\n"
+                  "  crewctl init --force --team example      (three small examples)"))
     return 0
 
 
@@ -676,8 +719,9 @@ def build_parser():
         p.add_argument("--break-lock", action="store_true", help="remove a stuck state lock")
         return p
 
-    p = sub.add_parser("init", help="create a starter config folder")
+    p = sub.add_parser("init", help="create a starter config folder, optionally with a ready-made team")
     p.add_argument("--force", action="store_true", help="overwrite the starter files if the folder already has a crewctl.json")
+    p.add_argument("--team", choices=sorted(TEAMS), help="also copy a ready-made team: devteam (ten crewmates) or example (three small ones)")
     p.set_defaults(func=cmd_init)
     sub.add_parser("validate", help="check the config, change nothing").set_defaults(func=cmd_validate)
     sub.add_parser("models", help="show the model catalog").set_defaults(func=cmd_models)

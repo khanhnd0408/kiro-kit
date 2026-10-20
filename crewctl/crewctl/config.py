@@ -627,6 +627,6 @@ def load_config(config_dir, overrides=None, local_models=None):
         seen_files[key] = spec.name
         specs.append(spec)
     if not specs and not any(p.level == "error" for p in problems):
-        problems.append(Problem("warn", config_dir, "no *.agent.json files found"))
+        problems.append(Problem("warn", config_dir, "no *.agent.json files found. `crewctl init` only creates the starter files. Copy _template.agent.json to <name>.agent.json and edit it, or start from a ready-made team with `crewctl init --force --team devteam`."))
     specs.sort(key=lambda s: s.name)
     return settings, specs, problems
