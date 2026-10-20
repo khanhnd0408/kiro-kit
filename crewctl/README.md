@@ -57,13 +57,15 @@ This uses a throwaway folder, so nothing in your real `~/.kiro` is touched.
 cd crewctl
 export CREWCTL_AGENTS_DIR=/tmp/crewctl-try/agents     # where agent files go
 mkdir -p /tmp/crewctl-try && cp -r examples/crew /tmp/crewctl-try/crew
-alias crewctl='python3 -m crewctl -c /tmp/crewctl-try/crew'
+export CREWCTL_DIR=/tmp/crewctl-try/crew              # the config folder, so no -c is needed (do not make an alias: it hides the installed command)
 
 crewctl validate        # check the three example crewmates
 crewctl plan            # show what apply would do (writes nothing)
 crewctl apply           # type yes; writes 3 files into /tmp/crewctl-try/agents
 crewctl status          # one line per crewmate
 ```
+
+When you are done, run `unset CREWCTL_DIR CREWCTL_AGENTS_DIR` so later commands use your real folders.
 
 Now edit `/tmp/crewctl-try/crew/log-analyst.agent.json` (change the `model`) and run `crewctl plan` again. You'll see a diff. Edit one of the written files in `/tmp/crewctl-try/agents/` by hand and run `crewctl plan`: it flags **DRIFT** and `apply` refuses to overwrite it unless you pass `--force`.
 
