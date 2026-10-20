@@ -699,6 +699,8 @@ def cmd_workspace(args):
         return 0 if _workspace_create(ctx, args, out, args.name, args.dir or ws.default_dir(args.name), args.copy_from or "", args.yes) else 1
     if args.workspace_action == "assign":
         return _workspace_assign(ctx, args, out)
+    if args.workspace_action == "restore":
+        return _workspace_restore(ctx, args, out)
     return _workspace_check(ctx, args, out)
 
 
@@ -869,6 +871,66 @@ def _workspace_assign(ctx, args, out):
         return 1
     print(out.green(f"{len(todo)} crewmate(s) now work in workspace '{target}'."))
     return 0
+
+def _backed_up_workspaces(config_dir):
+    """{crewmate name: workspace} from the newest backup of each crewmate's config file that says which workspace it used.
+
+    Looks at .crewctl/backups/<time>/**/<name>.agent.json (the copies crewctl saves before it overwrites a config file,
+    for example in `init --update` and `workspace assign`). A copy without a workspace line means "default" at that time.
+    """
+    root = os.path.join(config_dir, ".crewctl", "backups")
+    found = {}
+    if not os.path.isdir(root):
+        return found
+    for stamp in sorted(os.listdir(root), reverse=True):
+        for folder, _, files in os.walk(os.path.join(root, stamp)):
+            for name in sorted(files):
+                if not name.endswith(".agent.json") or name.startswith("_"):
+                    continue
+                try:
+                    data = json.load(open(os.path.join(folder, name), encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                crewmate = data.get("name") if isinstance(data, dict) else None
+                if isinstance(crewmate, str) and crewmate not in found:
+                    found[crewmate] = (data.get("workspace") or "default", stamp)
+    return found
+
+
+def _workspace_restore(ctx, args, out):
+    """Put crewmates back on the workspace their config file named before an overwrite (a backup holds it)."""
+    old = _backed_up_workspaces(ctx.config_dir)
+    wanted = {}
+    for spec in ctx.specs:
+        previous = old.get(spec.name)
+        if previous and previous[0] != spec.workspace:
+            wanted[spec.name] = previous
+    if not wanted:
+        print(out.green("Nothing to restore: no backup names a workspace different from the one the config uses now."))
+        if not old:
+            print(out.dim(f"(no backups of config files found under {_tilde(os.path.join(ctx.config_dir, '.crewctl', 'backups'))})"))
+        return 0
+    print("Workspaces from the newest backups, compared with the config now:")
+    for name, (workspace, stamp) in sorted(wanted.items()):
+        current = next(s.workspace for s in ctx.specs if s.name == name)
+        print(f"  {name:<28} {current} -> {out.bold(workspace)}   (backup {stamp})")
+    groups = {}
+    for name, (workspace, _) in wanted.items():
+        groups.setdefault(workspace, []).append(name)
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(out.red("Refusing to ask a question without a terminal. Use --yes."))
+            return 1
+        if input("Restore these? Type 'yes' to continue: ").strip() != "yes":
+            print("Cancelled.")
+            return 1
+    failed = 0
+    for workspace, names in sorted(groups.items()):
+        fresh = build_context(ctx.config_dir, _overrides(args), check_workspaces=False)
+        sub = argparse.Namespace(**{**vars(args), "workspace_name": workspace, "crewmates": sorted(names), "all": False, "yes": True})
+        failed += _workspace_assign(fresh, sub, out) != 0
+    return 1 if failed else 0
+
 
 def cmd_plan(args):
     out = _out(args)
@@ -1114,6 +1176,8 @@ def build_parser():
     q.add_argument("crewmates", nargs="*", metavar="CREWMATE", help="one or more crewmates; asked for when left out")
     q.add_argument("--all", action="store_true", help="every crewmate in the config")
     q.add_argument("-y", "--yes", action="store_true", help="do not ask; create the workspace with the default folder if it is missing")
+    q = wsub.add_parser("restore", help="put crewmates back on the workspace a backup of their config file names (after an overwrite)")
+    q.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
     q = wsub.add_parser("create", help="create one workspace")
     q.add_argument("name", help="workspace name (letters, digits, hyphens, underscores)")
     q.add_argument("--dir", metavar="FOLDER", help="folder name under Crew's data folder (default: workspace-<name>)")

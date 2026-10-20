@@ -2179,6 +2179,14 @@ class WorkspaceCommands(unittest.TestCase):
         self.assertIn("already ops", text)
         self.assertIn("already match", text)
 
+    def test_register_warns_when_it_would_move_a_crewmate_to_another_workspace(self):
+        env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
+                                     "a": {"kiro_agent": "a", "workspace": "ops", "description": "d", "triggers": "t"}})
+        env.agent("a")                                             # the config says default, Crew has ops
+        code, text = env.run("register")
+        self.assertIn("MOVES this crewmate from workspace 'ops' to 'default'", text)
+        self.assertIn("crewctl workspace restore", text)
+
     def test_register_updates_every_crewmate_whose_record_differs_in_one_run(self):
         env = self.assign_world()
         for name in "abc":
@@ -2191,6 +2199,77 @@ class WorkspaceCommands(unittest.TestCase):
         self.assertIn("agent update b --workspace ops", calls)
         self.assertIn("agent create --name c --kiro-agent c --workspace ops", calls)
         self.assertIn('config set agents.a.description "new"', calls)
+
+    def overwritten_world(self):
+        """Config files that were overwritten by an update that dropped the workspace lines; the backups still have them."""
+        records = {"default": {"kiro_agent": "kirocrew"},
+                   "a": {"kiro_agent": "a", "workspace": "default", "description": "d", "triggers": "t"},
+                   "b": {"kiro_agent": "b", "workspace": "default", "description": "d", "triggers": "t"}}
+        env = self.make(crew_agents=records, workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"},
+                                                         "dev": {"dir": "workspace-dev"}})
+        env.agent("a")
+        env.agent("b")
+        env.agent("c")
+        return env
+
+    def backup(self, env, stamp, name, workspace, sub="team-update"):
+        data = json.load(open(os.path.join(env.cfg, f"{name}.agent.json")))
+        data.pop("workspace", None)
+        if workspace is not None:
+            data["workspace"] = workspace
+        folder = os.path.join(env.cfg, ".crewctl", "backups", stamp, sub)
+        os.makedirs(folder, exist_ok=True)
+        json.dump(data, open(os.path.join(folder, f"{name}.agent.json"), "w"))
+
+    def test_restore_puts_crewmates_back_on_the_workspace_a_backup_names(self):
+        env = self.overwritten_world()
+        self.backup(env, "20260101-000000", "a", "ops")
+        self.backup(env, "20260101-000000", "b", "dev")
+        calls = []
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text = env.run("workspace", "restore", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.workspace_of(env, "a"), "ops")
+        self.assertEqual(self.workspace_of(env, "b"), "dev")
+        self.assertIsNone(self.workspace_of(env, "c"))                               # no backup: untouched
+        self.assertEqual(sorted(calls), ["agent update a --workspace ops", "agent update b --workspace dev"])
+        self.assertIn("a                            default -> ops", text)
+
+    def test_restore_uses_the_newest_backup_and_respects_an_explicit_default(self):
+        env = self.overwritten_world()
+        self.backup(env, "20250101-000000", "a", "dev")                              # old
+        self.backup(env, "20260101-000000", "a", "ops", sub="")                      # newer: ops wins
+        self.backup(env, "20250101-000000", "b", "dev")
+        self.backup(env, "20260101-000000", "b", "default")                          # newer says default on purpose
+        calls = []
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text = env.run("workspace", "restore", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.workspace_of(env, "a"), "ops")
+        self.assertIsNone(self.workspace_of(env, "b"))
+        self.assertEqual(calls, ["agent update a --workspace ops"])
+
+    def test_restore_ignores_generated_agent_files_and_says_when_there_is_nothing(self):
+        env = self.overwritten_world()
+        code, text = env.run("workspace", "restore", "--yes")
+        self.assertEqual(code, 0)
+        self.assertIn("Nothing to restore", text)
+        folder = os.path.join(env.cfg, ".crewctl", "backups", "20260101-000000")
+        os.makedirs(folder)
+        json.dump({"name": "a", "prompt": "generated kiro file"}, open(os.path.join(folder, "a.json"), "w"))      # not *.agent.json
+        code, text = env.run("workspace", "restore", "--yes")
+        self.assertIn("Nothing to restore", text)
+
+    def test_restore_asks_first_and_refuses_without_a_terminal(self):
+        env = self.overwritten_world()
+        self.backup(env, "20260101-000000", "a", "ops")
+        code, text = env.run("workspace", "restore")
+        self.assertEqual(code, 1)
+        self.assertIn("Use --yes", text)
+        self.assertIsNone(self.workspace_of(env, "a"))
+        code, text, _ = self.interactive(env, ["no"], "workspace", "restore")
+        self.assertEqual(code, 1)
+        self.assertIsNone(self.workspace_of(env, "a"))
 
     def test_a_failing_kirocrew_is_reported_and_check_exits_1(self):
         env = self.make()

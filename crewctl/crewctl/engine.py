@@ -265,6 +265,11 @@ def plan_registration(ctx, specs, removed_names):
                 action.notes.append(f"the crew record pins model '{record['model']}', which overrides the model in the agent "
                                     "file. Clear it in the dashboard (Agent Capabilities -> Agents) to use the file's model.")
             cli_diffs = [f for f in CLI_FIELDS if f in diffs]
+            if "workspace" in diffs:
+                wanted_ws, actual_ws = diffs["workspace"]
+                action.notes.append(f"MOVES this crewmate from workspace '{actual_ws}' to '{wanted_ws}' (the config says '{wanted_ws}'). "
+                                    "If that is not what you want, fix the `workspace` line in its config file first "
+                                    "(`crewctl workspace assign` or `crewctl workspace restore`).")
             if cli_diffs:
                 action.kind = "update"
                 update = ["agent", "update", spec.name]

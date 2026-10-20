@@ -193,6 +193,15 @@ Use the dashboard chat for each.
    You should see the orchestrator call `spawn_run`, then `monitor_start` (with `interval_secs` 30 and `max_cycles` 10), then end its turn. About every 30 seconds the conversation gets a new turn with a line such as `Cycle 2: <id> go-agent RUNNING 70s, 6 turns, last tool ...`. The goal button (target icon) in the message box shows the loop and the countdown. When the program has finished, the last turn is the final report in Vietnamese and an `autonudge_stop` call. It must not call the `wait` tool at any point; open the session transcript and search for `wait` to check. If `monitor_start` is refused, tell me the reason it gives.
 4. **Language.** Pick `orchestrator-agent` and write to it in Vietnamese, for example: `Nhờ python-agent viết hàm kiểm tra số nguyên tố, rồi tóm tắt cho tôi.` The final answer and any question card must be in Vietnamese. Then open the session's transcript (Sessions in the dashboard) and look at the brief sent to `python-agent`: it must start with `SUBAGENT TASK from orchestrator-agent. Reply in English only` and be entirely English, and so must `python-agent`'s reply to the orchestrator and the code comments it wrote. If a brief or a tool call is in Vietnamese, tell me which agent did it.
 
+## If an update moved your crewmates back to the default workspace
+
+`init --team devteam --update` used to overwrite the `workspace` lines you had set, and the next `register --run` then moved the crewmates in Crew. The update now keeps those lines, and `register` prints a **MOVES this crewmate from workspace 'x' to 'y'** note before `--run` changes anything. To undo the damage from the old version: every overwritten file was saved first, so
+```bash
+crewctl workspace restore          # shows each crewmate's old workspace from the backups; type yes
+crewctl register                   # should now show no workspace changes
+```
+brings the files and Crew's records back. If the command is not available on your copy yet, do it by hand: `grep -H '"workspace"' ~/crew/.crewctl/backups/*/team-update/*.agent.json` lists the old values, then for each crewmate run `kirocrew agent update NAME --workspace WORKSPACE` and put the same `"workspace": "WORKSPACE"` line back into `~/crew/NAME.agent.json`.
+
 ## If the orchestrator still uses `wait`
 
 Run these on the machine, then tell me the outputs and which agent made the `wait` call (open the session transcript):
