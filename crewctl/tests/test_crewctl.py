@@ -5,6 +5,7 @@ that the tests write themselves.
 Run:  python3 -m unittest discover -s tests -v     (from the crewctl folder)
 """
 
+import argparse
 import contextlib
 import io
 import json
@@ -1571,6 +1572,61 @@ class InstallerScript(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("No module named crewctl", result.stderr)
 
+
+
+class ColoredHelp(unittest.TestCase):
+    def run_cli(self, *argv, env=None):
+        import subprocess
+        base = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "FORCE_COLOR")}
+        base.update(env or {})
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return subprocess.run([sys.executable, "-m", "crewctl", *argv], capture_output=True, text=True, cwd=root, env=base, timeout=60)
+
+    def test_no_color_when_piped_or_disabled(self):
+        self.assertNotIn("\033", self.run_cli().stdout)                                   # piped, not a terminal
+        self.assertNotIn("\033", self.run_cli("--no-color", env={"FORCE_COLOR": "1"}).stdout)
+        self.assertNotIn("\033", self.run_cli(env={"FORCE_COLOR": "1", "NO_COLOR": "1"}).stdout)
+        self.assertNotIn("\033", self.run_cli("apply", "--help", env={"NO_COLOR": "1"}).stdout)
+
+    def test_overview_uses_four_kinds_of_color(self):
+        out = self.run_cli(env={"FORCE_COLOR": "1"}).stdout
+        self.assertIn("\033[1;36mcrewctl apply\033[0m", out)         # command
+        self.assertIn("\033[32m--target\033[0m", out)                # option
+        self.assertIn("\033[33mNAME\033[0m", out)                   # parameter
+        self.assertIn("\033[33mnew|plan|apply|destroy\033[0m", out)  # choices
+        self.assertIn("start a config folder", out)                  # description stays plain
+        self.assertNotIn("\033[2mstart", out)
+
+    def test_command_help_is_colored_the_same_way(self):
+        out = self.run_cli("apply", "--help", env={"FORCE_COLOR": "1"}).stdout
+        self.assertIn("\033[1;36mcrewctl apply\033[0m", out)
+        self.assertIn("\033[32m--target\033[0m \033[33mNAME\033[0m", out)
+        self.assertIn("limit to this crewmate (repeatable)", out)
+        group = self.run_cli("review", "--help", env={"FORCE_COLOR": "1"}).stdout
+        self.assertIn("\033[1;36minstall\033[0m", group)
+        positional = self.run_cli("review", "install", "--help", env={"FORCE_COLOR": "1"}).stdout
+        self.assertIn("\033[33mproject\033[0m", positional)
+
+    def test_plain_text_is_the_same_with_and_without_color(self):
+        import re
+        strip = lambda t: re.sub(r"\033\[[0-9;]*m", "", t)
+        for argv in ((), ("apply", "--help"), ("review", "install", "--help"), ("skills", "--help")):
+            plain = self.run_cli(*argv).stdout
+            colored = self.run_cli(*argv, env={"FORCE_COLOR": "1"}).stdout
+            self.assertEqual(strip(colored), plain, argv)
+
+    def test_overview_lists_exactly_the_commands_the_parser_has(self):
+        from crewctl.helptext import JOBS
+        parser = cli.build_parser()
+        names = set()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                names = set(action.choices) - {"overview"}
+                review = set(action.choices["review"]._actions[-1].choices)
+        listed = {entry[0].split()[1] for _, entries in JOBS for entry in entries}
+        self.assertEqual(listed, names)
+        listed_review = {entry[0].split()[2] for _, entries in JOBS for entry in entries if entry[0].startswith("crewctl review")}
+        self.assertEqual(listed_review, review)
 
 if __name__ == "__main__":
     unittest.main()

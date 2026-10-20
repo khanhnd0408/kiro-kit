@@ -12,6 +12,7 @@ from . import __version__
 from . import models as model_catalog
 from .engine import (ApplyBlocked, Plan, apply_plan, build_context, build_plan, command_line, import_existing,
                      run_registration, state_move, state_remove, status_rows)
+from .helptext import ColorParser, render_overview, use_color
 from .state import StateError, state_path
 from .util import LockError, pretty_json
 
@@ -34,7 +35,7 @@ class Out:
 
 
 def _out(args):
-    return Out(sys.stdout.isatty() and not args.no_color and "NO_COLOR" not in os.environ)
+    return Out(use_color(["--no-color"] if args.no_color else []))
 
 
 def _config_dir(args):
@@ -448,26 +449,8 @@ def cmd_review(args):
     return subprocess.call([sys.executable, "-I", checker, *args.extra], cwd=project)
 
 
-OVERVIEW = """crewctl does two jobs. Pick the job first, then the command.
-
-JOB 1. Build and manage the crew (a team of Kiro Crew agents, from JSON files)
-  crewctl init                 start a config folder           crewctl validate     check the config
-  crewctl plan / apply         show / write the agent files    crewctl register     create the Crew records
-  crewctl skills plan / apply  show / write the skills         crewctl status       one line per crewmate
-  crewctl destroy              remove what crewctl created     crewctl models       model names and credits
-  crewctl crew-servers         why Crew's tool servers are missing
-  The config folder: -c FOLDER, or export CREWCTL_DIR=FOLDER once. The ready-made team is crews/devteam.
-
-JOB 2. Review a project's prompts and agents against the Codex / Claude Code patterns (the agent-review kit)
-  crewctl review install PROJECT [--surface crew|ide] [--reference-source PATH] [--force]
-  crewctl review check PROJECT      re-check every file:line citation in the review output
-  crewctl review where              where the kit is
-
-Run `crewctl <command> --help` for the options of one command."""
-
-
 def cmd_overview(args):
-    print(OVERVIEW)
+    print(render_overview(_out(args).color))
     return 0
 
 
@@ -660,7 +643,7 @@ def cmd_state(args):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="crewctl", description=OVERVIEW, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = ColorParser(prog="crewctl", description=render_overview(ColorParser.enabled), formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"crewctl {__version__}")
     parser.add_argument("-c", "--config-dir", help="folder with the *.agent.json files (default: $CREWCTL_DIR or ./crew)")
     parser.add_argument("--agents-dir", help="where Kiro agent files go (default: ~/.kiro/agents or $CREWCTL_AGENTS_DIR)")
@@ -694,7 +677,7 @@ def build_parser():
         return p
 
     p = sub.add_parser("init", help="create a starter config folder")
-    p.add_argument("--force", action="store_true")
+    p.add_argument("--force", action="store_true", help="overwrite the starter files if the folder already has a crewctl.json")
     p.set_defaults(func=cmd_init)
     sub.add_parser("validate", help="check the config, change nothing").set_defaults(func=cmd_validate)
     sub.add_parser("models", help="show the model catalog").set_defaults(func=cmd_models)
@@ -707,9 +690,9 @@ def build_parser():
     p.add_argument("name", nargs="?", help="skill name (for `new`)")
     p.add_argument("--target", action="append", default=[], metavar="NAME", help="limit to this skill (repeatable)")
     p.add_argument("--show", action="store_true", help="plan: print the SKILL.md that would be written")
-    p.add_argument("-y", "--yes", action="store_true")
+    p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
     p.add_argument("--force", action="store_true", help="overwrite or delete files changed outside crewctl (backups are kept)")
-    p.add_argument("--break-lock", action="store_true")
+    p.add_argument("--break-lock", action="store_true", help="remove a stuck state lock")
     p.set_defaults(func=cmd_skills)
     p = with_common(sub.add_parser("plan", help="show what apply would do"))
     p.add_argument("--detailed-exitcode", action="store_true", help="exit 2 if there are changes (for CI)")
@@ -724,24 +707,25 @@ def build_parser():
     p.add_argument("--run", action="store_true", help="run the kirocrew commands instead of printing them")
     p.set_defaults(func=cmd_register)
     p = with_common(sub.add_parser("import", help="adopt an agent file that already exists"), target=False)
-    p.add_argument("name")
+    p.add_argument("name", help="the agent file to adopt (name of the crewmate)")
     p.set_defaults(func=cmd_import)
     p = sub.add_parser("state", help="inspect or edit the state")
     st = p.add_subparsers(dest="state_action", required=True)
     st.add_parser("list")
     for action in ("show", "rm"):
         q = st.add_parser(action)
-        q.add_argument("name")
-        q.add_argument("--break-lock", action="store_true")
+        q.add_argument("name", help="the crewmate in the state file")
+        q.add_argument("--break-lock", action="store_true", help="remove a stuck state lock")
     q = st.add_parser("mv")
-    q.add_argument("name")
-    q.add_argument("new_name")
-    q.add_argument("--break-lock", action="store_true")
+    q.add_argument("name", help="the crewmate to rename in the state file")
+    q.add_argument("new_name", help="the new name")
+    q.add_argument("--break-lock", action="store_true", help="remove a stuck state lock")
     p.set_defaults(func=cmd_state)
     return parser
 
 
 def main(argv=None):
+    ColorParser.enabled = use_color(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     if not getattr(args, "func", None):
         return cmd_overview(args)

@@ -15,6 +15,8 @@ You write one small JSON file per crewmate. crewctl turns each one into the Kiro
 
 Python 3, standard library only. Tested on 3.12 and 3.13. The code parses as Python 3.8 but has not been run on it.
 
+**Colors.** `crewctl` and every `--help` screen are colored when the output is a terminal: commands in bold cyan, `--options` in green, `PARAMETERS` in yellow, descriptions in plain text. `--no-color` or the `NO_COLOR` variable turns them off; `FORCE_COLOR=1` turns them on when piping into a pager (`less -R`).
+
 **Short command (optional).** From the repository root run `./install.sh` once; it links `bin/crewctl` as `~/.local/bin/crewctl` (no pip, no virtual environment, works with conda). You then type `crewctl <command>` instead of `python3 -m crewctl <command>`, and `export CREWCTL_DIR=/path/to/your/config/folder` replaces `-c <folder>` on every call. Everything in this README works either way.
 
 ## Where it runs, and moving between machines
