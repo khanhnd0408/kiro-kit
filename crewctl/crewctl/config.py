@@ -60,6 +60,7 @@ class Problem:
     level: str      # error | warn | info
     where: str
     message: str
+    kind: str = ""  # a machine-readable tag for the few problems a command can offer to fix (for example "workspace_missing")
 
     def __str__(self):
         return f"{self.level}: {self.where}: {self.message}"

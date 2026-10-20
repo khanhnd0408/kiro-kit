@@ -111,7 +111,7 @@ crewctl validate
 You should see ten crewmate lines and the last line: `OK: 10 crewmate(s) valid.`
 If you see `ERROR`, read the message; it names the file and the problem.
 
-If the error says a **workspace does not exist**, run `crewctl workspace check`. It asks for the workspace name, the folder name under `~/.kiro/crew`, and (optionally) an existing workspace to copy the files from, then creates it with `kirocrew workspace create`. The ten crewmates here use the `default` workspace, so you only see this if you changed a `workspace` line.
+If the error says a **workspace does not exist**, run `crewctl workspace check`. It asks for the workspace name, the folder name under `~/.kiro/crew`, and (optionally) an existing workspace to copy the files from, then creates it with `kirocrew workspace create`. The ten crewmates here use the `default` workspace, so you only see this if you changed a `workspace` line. To give one crewmate its own workspace later, even after it is registered: `crewctl workspace assign python-agent my-project`.
 
 ## Step 6. Install the skills
 

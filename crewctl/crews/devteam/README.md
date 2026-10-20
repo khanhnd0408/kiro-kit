@@ -73,7 +73,7 @@ The rules live in `prompts/_language.md` and are added to every agent by `prompt
 
 ## Workspaces
 
-Every crewmate here uses the `default` workspace. If you give one a different `workspace`, it must exist in Crew first; `crewctl validate` stops with an error otherwise. `crewctl workspace check` finds the missing ones and asks for the name, the folder name under `~/.kiro/crew` and (optionally) an existing workspace to copy files from.
+Every crewmate here uses the `default` workspace. If you give one a different `workspace`, it must exist in Crew first; `crewctl validate` stops with an error otherwise. `crewctl workspace check` finds the missing ones and asks for the name, the folder name under `~/.kiro/crew` and (optionally) an existing workspace to copy files from; `plan`, `apply` and `register` offer the same when that is the only problem. To move a crewmate that already exists in Crew to another workspace: `crewctl workspace assign python-agent my-project` (creates the workspace if needed, edits the crewmate's file and updates its Crew record).
 
 ## The orchestrator and the check loop
 

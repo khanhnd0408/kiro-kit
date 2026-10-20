@@ -120,7 +120,7 @@ def workspace_problems(specs, view):
         out.append(Problem("error", os.path.basename(next(s.source_file for s in specs if s.name == users[0])),
                            f"workspace '{name}' does not exist in Crew (it has: {have}). Used by: {', '.join(users)}. "
                            f"Create it with `crewctl workspace check` (it asks for the details) or "
-                           f"`crewctl workspace create {name}`."))
+                           f"`crewctl workspace create {name}`.", kind="workspace_missing"))
     return out
 
 

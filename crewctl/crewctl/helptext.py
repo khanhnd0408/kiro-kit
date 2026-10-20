@@ -29,6 +29,7 @@ JOBS = [
         ("crewctl destroy", "[--target NAME] [--delete-records] [-y]", "remove the files crewctl created (and with the option, the records)"),
         ("crewctl workspace list", "", "the workspaces Crew has, and which crewmates use them"),
         ("crewctl workspace check", "[--yes]", "find workspaces the config uses but Crew lacks, and create them (asks for the details)"),
+        ("crewctl workspace assign", "CREWMATE [WORKSPACE] [-y]", "change the workspace of an existing crewmate (edits its file, updates Crew)"),
         ("crewctl workspace create", "NAME [--dir FOLDER] [--copy-from NAME] [-y]", "create one workspace"),
         ("crewctl import", "NAME", "adopt an agent file that already exists"),
         ("crewctl state", "list|show|rm|mv [NAME]", "look at or edit the state file"),
