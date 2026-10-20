@@ -210,6 +210,37 @@ def _team_files(source):
     return sorted(found)
 
 
+PRESERVED_AGENT_KEYS = ("workspace", "workspace_dir")     # chosen per machine (crewctl workspace assign), so an update keeps them
+
+
+def _wanted_bytes(source_file, mine_file, rel):
+    """What the file should hold after an update: the team's version, keeping the workspace lines you set."""
+    with open(source_file, "rb") as handle:
+        wanted = handle.read()
+    if os.path.dirname(rel) or not rel.endswith(".agent.json") or not os.path.exists(mine_file):
+        return wanted, False
+    try:
+        mine = json.loads(open(mine_file, encoding="utf-8").read())
+        theirs = json.loads(wanted.decode("utf-8"))
+    except (OSError, ValueError):
+        return wanted, False
+    kept = {k: mine[k] for k in PRESERVED_AGENT_KEYS if k in mine and theirs.get(k) != mine[k]}
+    if not kept:
+        return wanted, False
+    theirs.update(kept)
+    return (json.dumps(theirs, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), True
+
+
+def _same_json(a, b, rel):
+    """Two agent files that hold the same data count as equal, whatever their spacing or final newline."""
+    if not rel.endswith(".json"):
+        return False
+    try:
+        return json.loads(a.decode("utf-8")) == json.loads(b.decode("utf-8"))
+    except ValueError:
+        return False
+
+
 def _update_team(args, out, target):
     """Bring a copy made by `init --team` up to date with the repository, keeping settings and backing up what changes."""
     import time
@@ -224,17 +255,19 @@ def _update_team(args, out, target):
         print(out.red(str(error)))
         return 1
     new, changed, same = [], [], []
+    kept_workspace = 0
     for rel in _team_files(source):
         if rel in TEAM_KEEP:
             continue
         mine = os.path.join(target, rel)
-        with open(os.path.join(source, rel), "rb") as handle:
-            wanted = handle.read()
+        wanted, was_kept = _wanted_bytes(os.path.join(source, rel), mine, rel)
+        kept_workspace += was_kept
         if not os.path.exists(mine):
             new.append(rel)
         else:
             with open(mine, "rb") as handle:
-                (same if handle.read() == wanted else changed).append(rel)
+                current = handle.read()
+            (same if current == wanted or _same_json(current, wanted, rel) else changed).append(rel)
     theirs = set(_team_files(source))
     own = sorted(rel for rel in _team_files(target) if rel not in theirs and rel not in TEAM_KEEP
                  and not rel.startswith(".crewctl") and not rel.endswith("_template.agent.json") and not rel.endswith("_template.skill.json"))
@@ -244,6 +277,8 @@ def _update_team(args, out, target):
         print(f"    {out.green('+ new    ')} {rel}")
     for rel in changed:
         print(f"    {out.yellow('~ changed')} {rel}")
+    if kept_workspace:
+        print(f"  Kept the workspace you chose in {kept_workspace} agent file(s) (workspace / workspace_dir lines).")
     print(f"  Kept as they are: {', '.join(TEAM_KEEP)} (your settings)" + (f"; and {len(own)} file(s) that are not part of the team." if own else "."))
     if not new and not changed:
         print(out.green("Nothing to update."))
@@ -263,8 +298,7 @@ def _update_team(args, out, target):
         os.makedirs(os.path.dirname(os.path.join(folder, rel)), exist_ok=True)
         shutil.copy2(os.path.join(target, rel), os.path.join(folder, rel))
     for rel in new + changed:
-        with open(os.path.join(source, rel), "rb") as handle:
-            data = handle.read()
+        data, _ = _wanted_bytes(os.path.join(source, rel), os.path.join(target, rel), rel)
         mode = os.stat(os.path.join(source, rel)).st_mode & 0o777
         atomic_write(os.path.join(target, rel), data, mode=mode)
     print(out.green(f"Updated {len(new) + len(changed)} file(s)." ) + (f" Old versions: {_tilde(folder)}" if changed else ""))

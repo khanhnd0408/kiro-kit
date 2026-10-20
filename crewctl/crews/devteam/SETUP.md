@@ -219,10 +219,11 @@ cd kiro-kit && git pull
    ```bash
    crewctl -c ~/crew init --team devteam --update
    ```
-   It lists what is new and what changed, keeps your `crewctl.json` and `_defaults.json` and any files of your own, saves the old versions of overwritten files under `~/crew/.crewctl/backups/<time>/team-update/`, and asks `yes` before writing. (If you use the folder inside the repository directly, `git pull` already updated it; skip this step.)
+   It lists what is new and what changed, keeps your `crewctl.json` and `_defaults.json`, the `workspace` lines you set in the agent files (with `crewctl workspace assign`) and any files of your own, saves the old versions of overwritten files under `~/crew/.crewctl/backups/<time>/team-update/`, and asks `yes` before writing. (If you use the folder inside the repository directly, `git pull` already updated it; skip this step.)
 2. **Check, then rewrite the files** (use `-c ~/crew` on each command, or `export CREWCTL_DIR=~/crew`):
    ```bash
    crewctl validate
+   crewctl workspace list    # which workspace each crewmate uses; `validate` already stops if one does not exist
    crewctl skills apply      # installs new or changed skills, in ~/.kiro/crew/skills
    crewctl plan              # shows what changes in each agent file
    crewctl apply             # rewrites the agent files: prompts, language rules, tools

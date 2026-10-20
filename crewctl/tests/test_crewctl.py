@@ -1819,6 +1819,32 @@ class InitTeams(unittest.TestCase):
         code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
         self.assertIn("Nothing to update", text)
 
+    def test_update_keeps_the_workspace_you_chose_in_agent_files(self):
+        folder = os.path.join(self.tmp, "c")
+        self.run_cli("-c", folder, "init", "--team", "devteam")
+        gen = os.path.join(folder, "go-agent.agent.json")
+        other = os.path.join(folder, "rust-agent.agent.json")
+        for path in (gen, other):
+            data = json.load(open(path))
+            data["workspace"] = "my-project"
+            data["workspace_dir"] = "workspace-my-project"
+            json.dump(data, open(path, "w"), indent=2)
+        data = json.load(open(gen))
+        data["description"] = "edited by hand"
+        json.dump(data, open(gen, "w"), indent=2)
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertIn("Kept the workspace you chose in", text)
+        updated = json.load(open(gen))
+        self.assertEqual((updated["workspace"], updated["workspace_dir"]), ("my-project", "workspace-my-project"))
+        self.assertNotEqual(updated["description"], "edited by hand")                # the team's text came back
+        self.assertIn("1 changed", text)
+        # a file where only the workspace differs from the team is not reported as changed
+        self.assertNotIn("rust-agent.agent.json", text)
+        self.assertEqual(json.load(open(other))["workspace"], "my-project")
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
+        self.assertIn("Nothing to update", text)
+
     def test_update_needs_a_team_and_an_existing_copy(self):
         folder = os.path.join(self.tmp, "c")
         code, text = self.run_cli("-c", folder, "init", "--update")
