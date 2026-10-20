@@ -13,14 +13,14 @@ You need on the new machine:
 
 **Get the files.** The whole `kiro-kit` folder must be on the new machine. Either:
 - **Git:** `git clone <your-repo-url> kiro-kit` (the repository must contain `crewctl/crews/devteam`; if it is not pushed yet, push it from the old machine first), or
-- **Copy:** copy the whole `kiro-kit` folder by USB or `scp`. Do not copy the `.venv` or `crewctl/crews/devteam/.crewctl` folders if they exist; they belong to the old machine.
+- **Copy:** copy the whole `kiro-kit` folder by USB or `scp`. Do not copy a `crewctl/crews/devteam/.crewctl` folder if one exists; it is the old machine's notes and must start empty here.
 
 **Install the command** (once, from the `kiro-kit` folder):
 ```bash
 cd kiro-kit
 ./install.sh
 ```
-You should see `installed: crewctl 0.1.0`. The script makes a private Python environment in `kiro-kit/.venv`, installs crewctl into it, and links it as `~/.local/bin/crewctl`. It touches nothing else. If it ends by telling you to add a line to your shell profile, do that and open a new terminal, so `crewctl` is found.
+You should see `installed: crewctl 0.1.0` and which `python3` it will use. The script only links `kiro-kit/bin/crewctl` as `~/.local/bin/crewctl`. There is nothing to pip-install and no virtual environment: crewctl uses only Python's standard library, so it runs with whichever `python3` is on your PATH when you run it. That works with conda too (if conda's `python3` is the one first on your PATH, crewctl uses it). To use a different Python, set `CREWCTL_PYTHON=/full/path/to/python`. If the script ends by telling you to add a line to your shell profile, do that and open a new terminal, so `crewctl` is found.
 
 Check it:
 ```bash
@@ -28,9 +28,9 @@ crewctl
 ```
 You should see an overview with two groups: **JOB 1** (build the crew) and **JOB 2** (review a project). This guide is JOB 1.
 
-Keep the `kiro-kit` folder where it is; the command reads the files in place. To remove the command later: `./install.sh --uninstall`.
+Keep the `kiro-kit` folder where it is; the command runs the files in place. To remove the command later: `./install.sh --uninstall`.
 
-Without the script (for example on Windows), the same thing by hand: `python3 -m venv .venv`, then `.venv/bin/pip install -e crewctl` (on Windows `.venv\Scripts\pip`), and run `.venv/bin/crewctl`. Or skip installing: every command below also works as `python3 -m crewctl -c crewctl/crews/devteam <command>` from the `kiro-kit` folder.
+**Do not run `python3 -m crewctl` from the `kiro-kit` folder.** You will get `No module named crewctl`, because the module lives one level down. Either use the `crewctl` command above, or run `./bin/crewctl <command>` from `kiro-kit`, or `cd kiro-kit/crewctl` first and then `python3 -m crewctl <command>`. On Windows (no bash), `cd kiro-kit\crewctl` and use `python -m crewctl <command>`.
 
 **Tell it which team folder to use**, so you do not repeat it on every command:
 ```bash

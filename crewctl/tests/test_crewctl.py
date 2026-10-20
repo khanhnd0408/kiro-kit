@@ -1503,15 +1503,58 @@ class ReviewCommands(unittest.TestCase):
 
 
 class InstallerScript(unittest.TestCase):
-    def test_installer_script_is_valid_and_checks_its_arguments(self):
+    ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def run_cmd(self, argv, **kwargs):
         import subprocess
-        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        script = os.path.join(root, "install.sh")
-        self.assertTrue(os.access(script, os.X_OK))
-        self.assertEqual(subprocess.run(["bash", "-n", script]).returncode, 0)
-        result = subprocess.run(["bash", script, "--bogus"], capture_output=True, text=True)
+        return subprocess.run(argv, capture_output=True, text=True, timeout=60, **kwargs)
+
+    def test_scripts_are_valid_and_the_installer_checks_its_arguments(self):
+        for name in ("install.sh", os.path.join("bin", "crewctl")):
+            path = os.path.join(self.ROOT, name)
+            self.assertTrue(os.access(path, os.X_OK), name)
+            self.assertEqual(self.run_cmd(["bash", "-n", path]).returncode, 0, name)
+        result = self.run_cmd(["bash", os.path.join(self.ROOT, "install.sh"), "--bogus"])
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage", result.stderr)
+
+    def test_install_links_the_launcher_and_the_link_runs_from_anywhere(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        env = {**os.environ, "HOME": tmp, "CREWCTL_BIN_DIR": os.path.join(tmp, "bin")}
+        result = self.run_cmd(["bash", os.path.join(self.ROOT, "install.sh")], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        link = os.path.join(tmp, "bin", "crewctl")
+        self.assertTrue(os.path.islink(link))
+        run = self.run_cmd([link, "--version"], cwd="/", env=env)
+        self.assertEqual((run.returncode, run.stdout.strip()), (0, "crewctl 0.1.0"))
+        self.assertEqual(self.run_cmd([link, "review", "where"], cwd="/", env=env).returncode, 0)
+        # a file that is not our link is never replaced
+        os.remove(link)
+        open(link, "w").write("mine")
+        self.assertEqual(self.run_cmd(["bash", os.path.join(self.ROOT, "install.sh")], env=env).returncode, 2)
+        self.assertEqual(open(link).read(), "mine")
+        # uninstall removes only our own link
+        self.assertEqual(self.run_cmd(["bash", os.path.join(self.ROOT, "install.sh"), "--uninstall"], env=env).returncode, 0)
+        self.assertTrue(os.path.exists(link))
+        os.remove(link)
+        os.symlink(os.path.join(self.ROOT, "bin", "crewctl"), link)
+        self.run_cmd(["bash", os.path.join(self.ROOT, "install.sh"), "--uninstall"], env=env)
+        self.assertFalse(os.path.lexists(link))
+
+    def test_launcher_picks_the_python_you_name_and_reports_a_bad_one(self):
+        launcher = os.path.join(self.ROOT, "bin", "crewctl")
+        env = {**os.environ, "CREWCTL_PYTHON": sys.executable}
+        self.assertEqual(self.run_cmd([launcher, "--version"], cwd="/", env=env).stdout.strip(), "crewctl 0.1.0")
+        bad = self.run_cmd([launcher, "--version"], env={**os.environ, "CREWCTL_PYTHON": "/nonexistent/python"})
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("CREWCTL_PYTHON", bad.stderr)
+
+    def test_python_dash_m_from_the_repository_root_fails_as_the_docs_warn(self):
+        result = self.run_cmd([sys.executable, "-m", "crewctl", "--version"], cwd=self.ROOT)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No module named crewctl", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

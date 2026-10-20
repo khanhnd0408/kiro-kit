@@ -12,13 +12,13 @@ One command, `crewctl`, for two separate jobs. Pick the job, then the command.
 On the machine where you will use it, from this folder:
 
 ```bash
-./install.sh            # makes ./.venv, installs crewctl into it, links ~/.local/bin/crewctl
+./install.sh            # links bin/crewctl as ~/.local/bin/crewctl
 crewctl                 # prints the overview of the two jobs
 ```
 
-If the script says to add `~/.local/bin` to your PATH, do that and open a new terminal. Keep the repository where it is: the command reads the files here. `./install.sh --uninstall` removes it. Needs python3 (3.8 or newer) with the `venv` module; on Debian or Ubuntu that is `sudo apt install python3-venv`. No other tools are needed.
+There is nothing to pip-install and no virtual environment: crewctl uses only Python's standard library and runs with whichever `python3` is on your PATH when you run it (conda, a venv, the system Python). Set `CREWCTL_PYTHON=/path/to/python` to choose another. If the script says to add `~/.local/bin` to your PATH, do that and open a new terminal. Keep the repository where it is. `./install.sh --uninstall` removes the link. Needs Python 3.8 or newer.
 
-Without the script: `python3 -m pip install -e crewctl` (or `pipx install -e crewctl`), or run `python3 -m crewctl ...` from the `crewctl` folder.
+Without installing: run `./bin/crewctl <command>` from this folder, or `cd crewctl && python3 -m crewctl <command>`. Running `python3 -m crewctl` from this top folder fails with `No module named crewctl`; the module is one level down.
 
 ## Job 1: the crew
 

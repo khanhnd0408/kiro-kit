@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Run crewctl straight from this repository. No pip, no virtual environment.
+# crewctl uses only the Python standard library, so it runs with whatever `python3` is on your PATH
+# (a conda environment, a venv, the system Python). Use CREWCTL_PYTHON=/path/to/python to pick another one.
+# This file is what `./install.sh` links as ~/.local/bin/crewctl.
+set -eu
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do                       # follow links, so the ~/.local/bin link finds the repository
+  DIR="$(cd "$(dirname "$SELF")" && pwd)"
+  SELF="$(readlink "$SELF")"
+  case "$SELF" in /*) ;; *) SELF="$DIR/$SELF" ;; esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+PY="${CREWCTL_PYTHON:-python3}"
+
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "crewctl: cannot find '$PY'. Install Python 3.8 or newer, or set CREWCTL_PYTHON to its path." >&2
+  exit 2
+fi
+if ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then
+  echo "crewctl: '$PY' is older than Python 3.8 (or cannot run). Set CREWCTL_PYTHON to a newer one." >&2
+  exit 2
+fi
+PYTHONPATH="$ROOT/crewctl${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m crewctl "$@"

@@ -1,53 +1,39 @@
 #!/usr/bin/env bash
-# Install the `crewctl` command from this repository.
+# Put the `crewctl` command on your PATH.
 #
 # Usage:
-#   ./install.sh              install (safe to run again)
-#   ./install.sh --uninstall  remove what this script created
+#   ./install.sh              link bin/crewctl as ~/.local/bin/crewctl (safe to run again)
+#   ./install.sh --uninstall  remove that link
 #
-# What it does:
-#   1. Makes a private Python environment in ./.venv inside this repository (so it never touches the
-#      system Python and works on systems that refuse `pip install`).
-#   2. Installs crewctl into it in editable mode, so the command reads the files in this repository.
-#   3. Links it as ~/.local/bin/crewctl.
-# It needs python3 (3.8 or newer) with the venv module, and network access to fetch pip's build tools.
-# It does not touch Kiro, Crew, or anything outside this repository and ~/.local/bin/crewctl.
+# crewctl uses only the Python standard library, so there is nothing to pip-install and no virtual
+# environment. The command runs the files in this repository with whichever `python3` is on your PATH
+# when you run it (a conda environment, a venv, the system Python), or the one in CREWCTL_PYTHON.
+# Keep this repository where it is. The script changes nothing except the one link.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV="$REPO/.venv"
+LAUNCHER="$REPO/bin/crewctl"
 BIN_DIR="${CREWCTL_BIN_DIR:-$HOME/.local/bin}"
 LINK="$BIN_DIR/crewctl"
 
 if [ "${1:-}" = "--uninstall" ]; then
-  if [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$VENV/bin/crewctl" ]; then rm "$LINK"; echo "removed $LINK"; fi
-  if [ -d "$VENV" ]; then rm -r "$VENV"; echo "removed $VENV"; fi
-  echo "done"
+  if [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$LAUNCHER" ]; then rm "$LINK"; echo "removed $LINK"; else echo "nothing to remove at $LINK"; fi
   exit 0
 fi
 if [ $# -gt 0 ]; then echo "usage: ./install.sh [--uninstall]" >&2; exit 2; fi
 
+[ -x "$LAUNCHER" ] || { echo "error: $LAUNCHER is missing or not executable" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "error: python3 is required" >&2; exit 2; }
-python3 - <<'PY' || { echo "error: Python 3.8 or newer is required" >&2; exit 2; }
-import sys
-sys.exit(0 if sys.version_info >= (3, 8) else 1)
-PY
-
-if [ ! -x "$VENV/bin/python" ]; then
-  echo "creating $VENV"
-  python3 -m venv "$VENV" || { echo "error: could not create a virtual environment (on Debian or Ubuntu: sudo apt install python3-venv)" >&2; exit 2; }
-fi
-echo "installing crewctl"
-"$VENV/bin/python" -m pip install --quiet --disable-pip-version-check -e "$REPO/crewctl"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' || { echo "error: Python 3.8 or newer is required (this one: $(python3 --version 2>&1))" >&2; exit 2; }
 
 mkdir -p "$BIN_DIR"
 if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then
   echo "error: $LINK exists and is not a link made by this script; move it away and run again" >&2
   exit 2
 fi
-ln -sfn "$VENV/bin/crewctl" "$LINK"
+ln -sfn "$LAUNCHER" "$LINK"
 
-echo "installed: $("$LINK" --version)"
+echo "installed: $("$LINK" --version)   (python3 = $(command -v python3))"
 case ":$PATH:" in
   *":$BIN_DIR:"*) echo "ready: run  crewctl" ;;
   *) echo "add this line to your shell profile, then open a new terminal:"
