@@ -1,0 +1,29 @@
+{
+  "name": "subagent-watch",
+  "description": "Use when you started subagents with spawn_run and must watch them until they finish without the wait tool. Runs a script that checks every N seconds for M rounds and reports each run as running, done or waiting for approval.",
+  "triggers": [
+    "watch subagent",
+    "check subagent",
+    "wait for subagent",
+    "supervise runs"
+  ],
+  "title": "Watch subagents",
+  "goal": "Check on running subagents in a loop that lives in a script, so the model does not spend a turn per check and never needs the wait tool.",
+  "steps": [
+    "Test once per session: `python3 {{skill_dir}}/scripts/watch_subagents.py --probe`. Exit 0 means the shell can reach Crew.",
+    "Watch: `python3 {{skill_dir}}/scripts/watch_subagents.py --every 30 --rounds 10 ID1 ID2` (the ids come from the spawn_run reply). It prints one line per round and returns when every run is done or the rounds are used up.",
+    "Exit codes: 0 all done, 3 rounds used up and some run still going, 4 a run waits for spawn approval in the dashboard, 5 an id is not in the list, 2 Crew cannot be reached from this shell.",
+    "Keep one call under the shell tool's time limit: --every times --rounds should stay under a few minutes. Repeat the call to keep watching."
+  ],
+  "output": "The script's lines, and what they mean for the user.",
+  "gotchas": [
+    "It only reads the list of runs (`kirocrew spawn list`); it never changes or stops a run.",
+    "A run that finishes can drop out of the list after about an hour; check right after the completion event."
+  ],
+  "files": {
+    "scripts/watch_subagents.py": {
+      "source": "skills/assets/orchestration/watch_subagents.py",
+      "executable": true
+    }
+  }
+}

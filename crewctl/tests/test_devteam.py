@@ -11,7 +11,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -243,6 +245,97 @@ class CollectEvidence(Tmp):
         self.assertIn("404", err)
 
 
+class WatchSubagents(Tmp):
+    """watch_subagents.py against a fake `kirocrew` whose `spawn list` output changes from call to call."""
+
+    def fake(self, *frames):
+        """Each call to `spawn list` prints the next frame (a string); the last frame repeats."""
+        folder = os.path.join(self.tmp, "frames")
+        os.makedirs(folder, exist_ok=True)
+        for index, text in enumerate(frames):
+            with open(os.path.join(folder, f"{index}.txt"), "w", encoding="utf-8") as handle:
+                handle.write(text)
+        counter = os.path.join(self.tmp, "count")
+        open(counter, "w").write("0")
+        script = os.path.join(self.tmp, "kirocrew")
+        with open(script, "w", encoding="utf-8") as handle:
+            handle.write(f"""#!{sys.executable}
+import os, sys
+n = int(open({counter!r}).read())
+open({counter!r}, "w").write(str(n + 1))
+frames = {len(frames)}
+text = open(os.path.join({folder!r}, str(min(n, frames - 1)) + ".txt"), encoding="utf-8").read()
+sys.stdout.write(text)
+sys.exit(1 if text.startswith("Error:") else 0)
+""")
+        os.chmod(script, 0o755)
+        return script
+
+    def watch(self, script, *args):
+        return run("orchestration/watch_subagents.py", "--kirocrew", script, *args)
+
+    def test_returns_when_every_run_is_done_and_prints_one_line_per_round(self):
+        fake = self.fake("  \u23f3 aaa111  write code\n  \u23f3 bbb222  review\n", "  \u23f3 aaa111  write code\n  \u2705 bbb222  review\n",
+                         "  \u2705 aaa111  write code\n  \u2705 bbb222  review\n")
+        code, out, err = self.watch(fake, "--every", "1", "--rounds", "5", "aaa111", "bbb222")
+        self.assertEqual(code, 0, err)
+        lines = out.strip().splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertRegex(lines[0], r"^round 1/5 \+0s  aaa111 running  bbb222 running$")
+        self.assertRegex(lines[1], r"^round 2/5 \+1s  aaa111 running  bbb222 done$")
+        self.assertRegex(lines[2], r"^round 3/5 \+2s  aaa111 done  bbb222 done$")
+
+    def test_already_done_returns_after_one_round_without_sleeping(self):
+        fake = self.fake("  \u2705 aaa111  task\n")
+        started = time.monotonic()
+        code, out, _ = self.watch(fake, "--every", "60", "--rounds", "5", "aaa111")
+        self.assertEqual(code, 0)
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+
+    def test_rounds_used_up_exits_3_and_names_what_is_still_running(self):
+        fake = self.fake("  \u23f3 aaa111  task\n  \u2705 bbb222  other\n")
+        code, out, _ = self.watch(fake, "--every", "1", "--rounds", "2", "aaa111", "bbb222")
+        self.assertEqual(code, 3)
+        self.assertIn("rounds used up after", out)
+        self.assertIn("still running: aaa111", out)
+        self.assertNotIn("still running: aaa111, bbb222", out)
+
+    def test_waiting_for_approval_exits_4(self):
+        fake = self.fake("  \U0001f510 aaa111  task  \u2014 waiting for spawn approval\n")
+        code, out, _ = self.watch(fake, "--every", "1", "--rounds", "3", "aaa111")
+        self.assertEqual(code, 4)
+        self.assertIn("Approvals", out)
+
+    def test_unknown_id_exits_5_and_unreachable_crew_exits_2(self):
+        code, _, err = self.watch(self.fake("  \u23f3 aaa111  task\n"), "--every", "1", "--rounds", "2", "zzz999")
+        self.assertEqual(code, 5)
+        self.assertIn("not in `kirocrew spawn list`", err)
+        code, _, err = self.watch(self.fake("Error: gateway not running (cannot reach dashboard on port 8080)\n"), "aaa111")
+        self.assertEqual(code, 2)
+        self.assertIn("cannot reach Crew from this shell", err)
+        code, _, err = self.watch(os.path.join(self.tmp, "does-not-exist"), "aaa111")
+        self.assertEqual(code, 2)
+
+    def test_probe_and_argument_checks(self):
+        fake = self.fake("No subagents.\n")
+        code, out, _ = self.watch(fake, "--probe")
+        self.assertEqual((code, out.strip()), (0, "ok: reached Crew; 0 subagent(s) listed"))
+        self.assertEqual(self.watch(fake)[0], 2)                                           # no ids
+        self.assertEqual(self.watch(fake, "--every", "0", "aaa")[0], 2)
+        self.assertEqual(self.watch(fake, "--rounds", "5000", "aaa")[0], 2)
+        self.assertEqual(self.watch(fake, "a;rm -rf x")[0], 2)                             # not an id
+
+    def test_parser_ignores_other_lines(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("watch_subagents", os.path.join(ASSETS, "orchestration", "watch_subagents.py"))
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            spec.loader.exec_module(module)                   # no __pycache__ appears in the pack
+        found = module.parse_list("noise\n  \u2705 id1  a task\n  \u23f3 id2  another\ntext \u2705 not-a-row\n")
+        self.assertEqual(found, {"id1": "done", "id2": "running"})
+
+
 class Pack(Tmp):
     def setUp(self):
         super().setUp()
@@ -326,29 +419,48 @@ class Pack(Tmp):
             for script in os.listdir(os.path.join(self.skills, name, "scripts")) if os.path.isdir(os.path.join(self.skills, name, "scripts")) else []:
                 self.assertTrue(os.access(os.path.join(self.skills, name, "scripts", script), os.X_OK), (name, script))
 
-    def test_orchestrator_supervision_loop_is_consistent_with_crew(self):
+    def test_orchestrator_loop_uses_the_watcher_script_and_never_the_wait_tool(self):
         agent = json.load(open(os.path.join(PACK, "orchestrator-agent.agent.json")))
-        prompt = open(os.path.join(PACK, agent["prompt_files"][0]), encoding="utf-8").read()
-        for tool in ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "wait"):
+        prompt = self.compiled_prompts()["orchestrator-agent"]
+        # no wait tool anywhere: not in the tool list, not pre-approved, not mounted from Crew
+        self.assertNotIn("wait", agent["crew_servers"]["core"]["tools"])
+        self.assertNotIn("@kirocrew-core/wait", agent["allowed_tools"])
+        self.assertIn("You never use the wait tool", prompt)
+        self.assertNotIn("Call wait with", prompt)
+        for tool in ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "ask_question"):
             self.assertIn(f"@kirocrew-core/{tool}", agent["allowed_tools"])
             self.assertIn(tool, agent["crew_servers"]["core"]["tools"])
-        # unattended loop: it must not need an approval for a tool it uses every round
-        for tool in ("wait", "spawn_status"):
-            self.assertIn(f"@kirocrew-core/{tool}", agent["allowed_tools"])
-        # read-only on purpose: no write, shell or web
-        self.assertTrue(set(agent["tools"]) <= {"fs_read", "grep", "glob", "code"})
-        # the defaults the user can override, inside the limits of Crew's wait tool (60..1800 seconds)
+        # spawn_status is used each call, so it must be pre-approved for an unattended loop
+        self.assertIn("@kirocrew-core/spawn_status", agent["allowed_tools"])
+        # the settings the user can override
         every = int(re.search(r"CHECK_EVERY_SECONDS = (\d+)", prompt).group(1))
         rounds = int(re.search(r"MAX_ROUNDS = (\d+)", prompt).group(1))
-        self.assertTrue(60 <= every <= 1800, every)
+        per_call = int(re.search(r"ROUNDS_PER_CALL = (\d+)", prompt).group(1))
+        self.assertTrue(1 <= every <= 3600 and per_call <= rounds, (every, rounds, per_call))
         self.assertTrue(every * rounds <= 14400, (every, rounds))
-        self.assertIn("60 to 1800", prompt)
-        # it must name every other crewmate, using the crew field
+        # all other crewmates are named, with the crew field
         for name in ("spec-agent", "backend-architecture-agent", "python-agent", "go-agent", "rust-agent", "genai-agent",
                      "mldl-agent", "devsecops-agent", "inspector-agent"):
             self.assertIn(name, prompt)
         self.assertIn("`crew` field", prompt)
-        self.assertIn("round 5 of 24", prompt)
+
+    def test_orchestrator_shell_permission_allows_only_the_watcher_command(self):
+        agent = json.load(open(os.path.join(PACK, "orchestrator-agent.agent.json")))
+        self.assertIn("execute_bash", agent["tools"])
+        self.assertNotIn("execute_bash", agent["allowed_tools"])               # otherwise every command would be pre-approved
+        allowed = agent["extra_agent_fields"]["toolsSettings"]["execute_bash"]["allowedCommands"]
+        self.assertEqual(len(allowed), 1)
+        pattern = re.compile(allowed[0])
+        good = "python3 ~/.kiro/crew/skills/subagent-watch/scripts/watch_subagents.py --every 30 --rounds 10 a1b2c3 d4e5f6"
+        self.assertTrue(pattern.match(good))
+        self.assertTrue(pattern.match("python3 ~/.kiro/crew/skills/subagent-watch/scripts/watch_subagents.py --probe"))
+        for bad in (good + "; rm -rf ~", good + " && curl x", good + " | sh", good + " $(id)", good + " `id`", good + " > /tmp/x",
+                    "python3 ~/.kiro/crew/skills/other/scripts/watch_subagents.py --probe",
+                    "python3 /tmp/watch_subagents.py --probe", "rm -rf ~", "sleep 30"):
+            self.assertFalse(pattern.match(bad), bad)
+        prompt = self.compiled_prompts()["orchestrator-agent"]
+        self.assertIn("python3 ~/.kiro/crew/skills/subagent-watch/scripts/watch_subagents.py", prompt)
+        self.assertEqual(agent["skills"], ["~/.kiro/crew/skills/subagent-watch/SKILL.md"])
 
     def compiled_prompts(self):
         from crewctl.config import load_config
@@ -387,7 +499,8 @@ class Pack(Tmp):
 
     def test_no_credentials_or_personal_text_in_the_pack(self):
         from crewctl.config import SECRET_PATTERNS
-        for folder, _, files in os.walk(PACK):
+        for folder, dirs, files in os.walk(PACK):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
             for f in files:
                 text = open(os.path.join(folder, f), encoding="utf-8").read()
                 for pattern in SECRET_PATTERNS:

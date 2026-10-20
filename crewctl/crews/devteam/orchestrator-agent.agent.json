@@ -1,7 +1,7 @@
 {
   "name": "orchestrator-agent",
   "display_name": "Orchestrator",
-  "description": "Coordinates the specialist crewmates, supervises long-running subagents with a timed check loop, and verifies results.",
+  "description": "Coordinates the specialist crewmates, watches long-running subagents with a check loop (a script, not the wait tool), and verifies results.",
   "triggers": "Use for any task that needs more than one specialist, a long-running job that must be supervised, or when it is unclear which crewmate should start.",
   "model": "claude-sonnet-4.5",
   "paid_model": "claude-sonnet-5.5",
@@ -9,7 +9,8 @@
     "fs_read",
     "grep",
     "glob",
-    "code"
+    "code",
+    "execute_bash"
   ],
   "allowed_tools": [
     "fs_read",
@@ -22,7 +23,6 @@
     "@kirocrew-core/spawn_steer",
     "@kirocrew-core/spawn_continue",
     "@kirocrew-core/spawn_release",
-    "@kirocrew-core/wait",
     "@kirocrew-core/ask_question"
   ],
   "crew_servers": {
@@ -34,7 +34,6 @@
         "spawn_steer",
         "spawn_continue",
         "spawn_release",
-        "wait",
         "ask_question"
       ]
     }
@@ -42,5 +41,17 @@
   "prompt_files": [
     "prompts/orchestrator-agent.md",
     "prompts/_language.md"
-  ]
+  ],
+  "skills": [
+    "~/.kiro/crew/skills/subagent-watch/SKILL.md"
+  ],
+  "extra_agent_fields": {
+    "toolsSettings": {
+      "execute_bash": {
+        "allowedCommands": [
+          "^python3 ~/\\.kiro/crew/skills/subagent-watch/scripts/watch_subagents\\.py [-A-Za-z0-9 ]*$"
+        ]
+      }
+    }
+  }
 }
