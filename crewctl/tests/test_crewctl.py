@@ -1680,6 +1680,42 @@ class InitTeams(unittest.TestCase):
         self.assertIn("already has agent files", out)
         self.assertFalse(os.path.exists(os.path.join(folder, "crewctl.json")))
 
+    def test_update_refreshes_a_copy_keeps_settings_and_saves_what_it_overwrites(self):
+        folder = os.path.join(self.tmp, "c")
+        self.run_cli("-c", folder, "init", "--team", "devteam")
+        settings = os.path.join(folder, "crewctl.json")
+        json.dump({"plan": "paid", "use_crew_servers": False}, open(settings, "w"))
+        edited = os.path.join(folder, "prompts", "orchestrator-agent.md")
+        original = open(edited).read()
+        open(edited, "w").write("my own edit\n")
+        os.remove(os.path.join(folder, "prompts", "_language.md"))
+        mine = os.path.join(folder, "prompts", "my-notes.md")
+        open(mine, "w").write("keep me\n")
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update")            # no terminal, no --yes
+        self.assertEqual(code, 1)
+        self.assertIn("Use --yes", text)
+        self.assertEqual(open(edited).read(), "my own edit\n")
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
+        self.assertEqual(code, 0, text)
+        self.assertIn("1 new, 1 changed", text)
+        self.assertEqual(open(edited).read(), original)
+        self.assertTrue(os.path.exists(os.path.join(folder, "prompts", "_language.md")))
+        self.assertEqual(json.load(open(settings)), {"plan": "paid", "use_crew_servers": False})   # settings untouched
+        self.assertEqual(open(mine).read(), "keep me\n")                                           # your own files untouched
+        backups = [os.path.join(r, f) for r, _, fs in os.walk(os.path.join(folder, ".crewctl", "backups")) for f in fs]
+        self.assertEqual([open(b).read() for b in backups if b.endswith("orchestrator-agent.md")], ["my own edit\n"])
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
+        self.assertIn("Nothing to update", text)
+
+    def test_update_needs_a_team_and_an_existing_copy(self):
+        folder = os.path.join(self.tmp, "c")
+        code, text = self.run_cli("-c", folder, "init", "--update")
+        self.assertEqual(code, 1)
+        self.assertIn("--update needs --team", text)
+        code, text = self.run_cli("-c", folder, "init", "--team", "devteam", "--update", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("has no crewctl.json", text)
+
     def test_force_keeps_other_agent_files_and_says_so(self):
         folder = os.path.join(self.tmp, "c")
         self.run_cli("-c", folder, "init", "--team", "devteam")

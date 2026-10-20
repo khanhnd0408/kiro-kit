@@ -19,7 +19,7 @@ CODES = {"cmd": "1;36", "opt": "32", "param": "33", "head": "1", "dim": "2"}
 # (title, [(command words, usage, description), ...])
 JOBS = [
     ("JOB 1. Build and manage the crew (a team of Kiro Crew agents, from JSON files)", [
-        ("crewctl init", "[--force] [--team devteam|example]", "start a config folder, optionally with a ready-made team"),
+        ("crewctl init", "[--force] [--team devteam|example [--update]]", "start a config folder, optionally with a ready-made team; --update refreshes an existing copy"),
         ("crewctl validate", "", "check the config, change nothing"),
         ("crewctl models", "", "model names, credits, and which ones this machine's Crew has"),
         ("crewctl plan", "[--target NAME]", "show what apply would do; writes nothing"),

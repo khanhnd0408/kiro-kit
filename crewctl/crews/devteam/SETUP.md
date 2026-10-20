@@ -188,10 +188,36 @@ Use the dashboard chat for each.
 
 1. **Spec agent.** Pick `spec-agent` and send: `Write a spec, plan, todo and checklist for adding a --verbose flag to the small project in <a folder you name>.` You should get four files in a `docs/specs/...` folder, and a spec that asks you questions it cannot answer itself.
 2. **Confidence script.** Pick `genai-agent` and send: `Should I use RAG or fine-tuning for a support bot? Use your checklist.` The answer must contain the words `confidence`, `coverage` and `open items` copied from a script, not a percentage the model made up. If it gives its own percentage, the skill was not loaded; check Step 6.
-3. **The loop.** Pick `orchestrator-agent` and send:
-   `Ask go-agent to write and run a tiny Go program that sleeps 150 seconds and then prints done. Check every 20 seconds, up to 30 rounds.`
-   You should see the orchestrator run `watch_subagents.py --probe` once, then `watch_subagents.py --every 20 --rounds 10 <id>`, then lines such as `round 3/10 +40s  <id> running` and finally `<id> done`, followed by its report in Vietnamese. It must not call the `wait` tool at any point; open the session transcript and search for `wait` to check. If the shell tool asks for approval for the script each time, tell me. If it says it cannot reach Crew from the shell, tell me the error text.
+3. **The loop.** Open a normal dashboard chat with `orchestrator-agent` (a loop cannot be armed from a cron job or a subagent) and send:
+   `Ask go-agent to write and run a tiny Go program that sleeps 150 seconds and then prints done. Check every 30 seconds, up to 10 rounds.`
+   You should see the orchestrator call `spawn_run`, then `monitor_start` (with `interval_secs` 30 and `max_cycles` 10), then end its turn. About every 30 seconds the conversation gets a new turn with a line such as `Cycle 2: <id> go-agent RUNNING 70s, 6 turns, last tool ...`. The goal button (target icon) in the message box shows the loop and the countdown. When the program has finished, the last turn is the final report in Vietnamese and a `monitor_stop` call. It must not call the `wait` tool at any point; open the session transcript and search for `wait` to check. If `monitor_start` is refused, tell me the reason it gives.
 4. **Language.** Pick `orchestrator-agent` and write to it in Vietnamese, for example: `Nhờ python-agent viết hàm kiểm tra số nguyên tố, rồi tóm tắt cho tôi.` The final answer and any question card must be in Vietnamese. Then open the session's transcript (Sessions in the dashboard) and look at the brief sent to `python-agent`: it must start with `SUBAGENT TASK from orchestrator-agent. Reply in English only` and be entirely English, and so must `python-agent`'s reply to the orchestrator and the code comments it wrote. If a brief or a tool call is in Vietnamese, tell me which agent did it.
+
+## Updating to a newer version of the team (after `git pull`)
+
+When the repository gets new prompts, skills or agent settings, bring your machine up to date in this order. Nothing is lost: your settings stay, and every file that is overwritten is saved first.
+
+```bash
+cd kiro-kit && git pull
+```
+
+1. **If you made your own copy** with `crewctl -c ~/crew init --team devteam` (a folder outside the repository), refresh that copy:
+   ```bash
+   crewctl -c ~/crew init --team devteam --update
+   ```
+   It lists what is new and what changed, keeps your `crewctl.json` and `_defaults.json` and any files of your own, saves the old versions of overwritten files under `~/crew/.crewctl/backups/<time>/team-update/`, and asks `yes` before writing. (If you use the folder inside the repository directly, `git pull` already updated it; skip this step.)
+2. **Check, then rewrite the files** (use `-c ~/crew` on each command, or `export CREWCTL_DIR=~/crew`):
+   ```bash
+   crewctl validate
+   crewctl skills apply      # installs new or changed skills, in ~/.kiro/crew/skills
+   crewctl plan              # shows what changes in each agent file
+   crewctl apply             # rewrites the agent files: prompts, language rules, tools
+   crewctl register --run    # updates the Crew records: description, triggers, workspace
+   ```
+   `apply` stops if you edited a generated agent file by hand; read the message, and use `--force` only if you want the config to win (a backup is kept).
+3. **Start a new chat** with each crewmate. A conversation that is already open keeps the prompt it started with.
+
+What the two latest updates change for you: every prompt now ends with the language rules (English inside, Vietnamese only for the final answer and the questions to you), and the orchestrator watches subagents with Crew's monitor loop instead of the `wait` tool. Its agent file loses the `wait` tool and gains `monitor_start`, `monitor_update`, `monitor_stop` and `monitor_inspect`, so `crewctl plan` will show that change.
 
 ## Changing things later
 

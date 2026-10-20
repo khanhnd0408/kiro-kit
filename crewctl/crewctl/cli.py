@@ -195,16 +195,98 @@ def _team_source(name, target, force):
     return source
 
 
-def _copy_team(source, target):
+TEAM_IGNORE = (".crewctl", "__pycache__", "README.md", "SETUP.md")
+TEAM_KEEP = ("crewctl.json", "_defaults.json")     # your settings and defaults are never overwritten by an update
+
+
+def _team_files(source):
+    """Relative paths of every file in a ready-made team, minus the ones that are never copied."""
+    found = []
+    for root, dirs, files in os.walk(source):
+        dirs[:] = [d for d in dirs if d not in TEAM_IGNORE]
+        for name in files:
+            if name not in TEAM_IGNORE and not name.endswith(".pyc"):
+                found.append(os.path.relpath(os.path.join(root, name), source))
+    return sorted(found)
+
+
+def _update_team(args, out, target):
+    """Bring a copy made by `init --team` up to date with the repository, keeping settings and backing up what changes."""
+    import time
+    from .state import backup_file
+    from .util import atomic_write
+    if not os.path.exists(os.path.join(target, "crewctl.json")):
+        print(out.red(f"{_tilde(target)} has no crewctl.json. Create it first: crewctl -c {_tilde(target)} init --team {args.team}"))
+        return 1
+    try:
+        source = _team_source(args.team, target, True)
+    except ApplyBlocked as error:
+        print(out.red(str(error)))
+        return 1
+    new, changed, same = [], [], []
+    for rel in _team_files(source):
+        if rel in TEAM_KEEP:
+            continue
+        mine = os.path.join(target, rel)
+        with open(os.path.join(source, rel), "rb") as handle:
+            wanted = handle.read()
+        if not os.path.exists(mine):
+            new.append(rel)
+        else:
+            with open(mine, "rb") as handle:
+                (same if handle.read() == wanted else changed).append(rel)
+    theirs = set(_team_files(source))
+    own = sorted(rel for rel in _team_files(target) if rel not in theirs and rel not in TEAM_KEEP
+                 and not rel.startswith(".crewctl") and not rel.endswith("_template.agent.json") and not rel.endswith("_template.skill.json"))
+    print(f"Updating {_tilde(target)} from the '{args.team}' team in the repository:")
+    print(f"  {out.green(str(len(new)))} new, {out.yellow(str(len(changed)))} changed, {len(same)} already up to date.")
+    for rel in new:
+        print(f"    {out.green('+ new    ')} {rel}")
+    for rel in changed:
+        print(f"    {out.yellow('~ changed')} {rel}")
+    print(f"  Kept as they are: {', '.join(TEAM_KEEP)} (your settings)" + (f"; and {len(own)} file(s) that are not part of the team." if own else "."))
+    if not new and not changed:
+        print(out.green("Nothing to update."))
+        return 0
+    if changed:
+        print(out.dim("  Files you changed by hand will be overwritten; the old versions are saved first."))
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(out.red("Refusing to ask a question without a terminal. Use --yes."))
+            return 1
+        if input(f"Update {len(new) + len(changed)} file(s)? Type 'yes' to continue: ").strip() != "yes":
+            print("Cancelled.")
+            return 1
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    folder = os.path.join(target, ".crewctl", "backups", stamp, "team-update")
+    for rel in changed:
+        os.makedirs(os.path.dirname(os.path.join(folder, rel)), exist_ok=True)
+        shutil.copy2(os.path.join(target, rel), os.path.join(folder, rel))
+    for rel in new + changed:
+        with open(os.path.join(source, rel), "rb") as handle:
+            data = handle.read()
+        mode = os.stat(os.path.join(source, rel)).st_mode & 0o777
+        atomic_write(os.path.join(target, rel), data, mode=mode)
+    print(out.green(f"Updated {len(new) + len(changed)} file(s)." ) + (f" Old versions: {_tilde(folder)}" if changed else ""))
+    print(out.dim("Next: `crewctl validate`, `crewctl skills apply`, `crewctl apply`, `crewctl register --run`; then start a new chat with each crewmate."))
+    return 0
+
+
+def _copy_team(source, target, keep_settings=False):
     """Copy a ready-made team (agent files, prompts, skills, scripts) into the config folder."""
-    shutil.copytree(source, target, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(".crewctl", "__pycache__", "README.md", "SETUP.md"))
+    shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(*TEAM_IGNORE))
     return sorted(f[:-len(".agent.json")] for f in os.listdir(source) if f.endswith(".agent.json"))
+
 
 
 def cmd_init(args):
     out = _out(args)
     target = _config_dir(args)
+    if args.update:
+        if not args.team:
+            print(out.red("--update needs --team: crewctl init --team devteam --update"))
+            return 1
+        return _update_team(args, out, target)
     if os.path.exists(os.path.join(target, "crewctl.json")) and not args.force:
         print(f"{target} already has a crewctl.json; use --force to overwrite the starter files.")
         return 1
@@ -975,6 +1057,8 @@ def build_parser():
     p = sub.add_parser("init", help="create a starter config folder, optionally with a ready-made team")
     p.add_argument("--force", action="store_true", help="overwrite the starter files if the folder already has a crewctl.json")
     p.add_argument("--team", choices=sorted(TEAMS), help="also copy a ready-made team: devteam (ten crewmates) or example (three small ones)")
+    p.add_argument("--update", action="store_true", help="with --team: bring an existing copy up to date with the repository; keeps crewctl.json and _defaults.json, saves what it overwrites")
+    p.add_argument("-y", "--yes", action="store_true", help="with --update: do not ask for confirmation")
     p.set_defaults(func=cmd_init)
     sub.add_parser("validate", help="check the config, change nothing").set_defaults(func=cmd_validate)
     sub.add_parser("models", help="show the model catalog").set_defaults(func=cmd_models)
