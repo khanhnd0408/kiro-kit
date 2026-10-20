@@ -401,6 +401,76 @@ def cmd_crew_servers(args):
     return 1
 
 
+def _review_kit():
+    """Folder of the agent-review kit (kiro-kit/aiops), or None. CREWCTL_REVIEW_KIT overrides the guess."""
+    candidates = []
+    if os.environ.get("CREWCTL_REVIEW_KIT"):
+        candidates.append(os.path.abspath(os.path.expanduser(os.environ["CREWCTL_REVIEW_KIT"])))
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(os.path.dirname(os.path.dirname(here)), "aiops"))
+    for folder in candidates:
+        if os.path.isfile(os.path.join(folder, "install.sh")):
+            return folder
+    return None
+
+
+def cmd_review(args):
+    """The agent-review kit: install it into a project, or re-check its citations."""
+    import subprocess
+    out = _out(args)
+    kit = _review_kit()
+    if kit is None:
+        print(out.red("Cannot find the agent-review kit (the `aiops` folder next to `crewctl` in the kiro-kit repository)."))
+        print("Run crewctl from a clone of the repository (`pip install -e .` keeps it in place), "
+              "or set CREWCTL_REVIEW_KIT to the aiops folder.")
+        return 1
+    if args.review_action == "where":
+        print(f"Review kit: {_tilde(kit)}")
+        return 0
+    project = os.path.abspath(os.path.expanduser(args.project))
+    if not os.path.isdir(project):
+        print(out.red(f"{project} is not a folder."))
+        return 1
+    if args.review_action == "install":
+        if os.name == "nt":
+            print(out.red("The installer is a bash script. Run it from WSL or Git Bash: crewctl review install ..."))
+            return 1
+        argv = ["bash", os.path.join(kit, "install.sh"), project, "--surface", args.surface]
+        if args.reference_source:
+            argv += ["--reference-source", os.path.abspath(os.path.expanduser(args.reference_source))]
+        if args.force:
+            argv.append("--force")
+        return subprocess.call(argv)
+    checker = os.path.join(project, "tools", "agent_review", "check_citations.py")
+    if not os.path.isfile(checker):
+        print(out.red(f"{project} has no tools/agent_review/check_citations.py. Install the kit first: crewctl review install {args.project}"))
+        return 1
+    return subprocess.call([sys.executable, "-I", checker, *args.extra], cwd=project)
+
+
+OVERVIEW = """crewctl does two jobs. Pick the job first, then the command.
+
+JOB 1. Build and manage the crew (a team of Kiro Crew agents, from JSON files)
+  crewctl init                 start a config folder           crewctl validate     check the config
+  crewctl plan / apply         show / write the agent files    crewctl register     create the Crew records
+  crewctl skills plan / apply  show / write the skills         crewctl status       one line per crewmate
+  crewctl destroy              remove what crewctl created     crewctl models       model names and credits
+  crewctl crew-servers         why Crew's tool servers are missing
+  The config folder: -c FOLDER, or export CREWCTL_DIR=FOLDER once. The ready-made team is crews/devteam.
+
+JOB 2. Review a project's prompts and agents against the Codex / Claude Code patterns (the agent-review kit)
+  crewctl review install PROJECT [--surface crew|ide] [--reference-source PATH] [--force]
+  crewctl review check PROJECT      re-check every file:line citation in the review output
+  crewctl review where              where the kit is
+
+Run `crewctl <command> --help` for the options of one command."""
+
+
+def cmd_overview(args):
+    print(OVERVIEW)
+    return 0
+
+
 def cmd_plan(args):
     out = _out(args)
     ctx = _load(args, out)
@@ -590,14 +660,28 @@ def cmd_state(args):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="crewctl", description="Manage Kiro Crew agents from JSON files, with Terraform-style state.")
+    parser = argparse.ArgumentParser(prog="crewctl", description=OVERVIEW, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"crewctl {__version__}")
     parser.add_argument("-c", "--config-dir", help="folder with the *.agent.json files (default: $CREWCTL_DIR or ./crew)")
     parser.add_argument("--agents-dir", help="where Kiro agent files go (default: ~/.kiro/agents or $CREWCTL_AGENTS_DIR)")
     parser.add_argument("--crew-home", help="Crew's data folder, read-only (default: $KIROCREW_HOME or ~/.kiro/crew)")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true", help="also show notes")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.epilog = "Run `crewctl` with no command for a short overview of what it can do."
+    sub = parser.add_subparsers(dest="command", required=False)
+    sub.add_parser("overview", help="what crewctl can do, in two groups").set_defaults(func=cmd_overview)
+    p = sub.add_parser("review", help="agent-review kit: install it into a project, or re-check citations")
+    review = p.add_subparsers(dest="review_action", required=True)
+    q = review.add_parser("install", help="install the review method into a project")
+    q.add_argument("project", help="the project folder to review")
+    q.add_argument("--surface", choices=["crew", "ide"], default="crew", help="Kiro Crew (default) or Kiro IDE")
+    q.add_argument("--reference-source", metavar="PATH", help="a clone of the public system_prompts_leaks repository")
+    q.add_argument("--force", action="store_true", help="also replace docs/agent-review-method/inputs.md")
+    q = review.add_parser("check", help="re-check every file:line citation in a project's review output")
+    q.add_argument("project", nargs="?", default=".", help="the reviewed project (default: current folder)")
+    q.add_argument("extra", nargs=argparse.REMAINDER, help="extra options for the checker, after --")
+    review.add_parser("where", help="show where the review kit is").set_defaults(project=".")
+    p.set_defaults(func=cmd_review)
 
     def with_common(p, target=True, yes=False, force=False):
         if target:
@@ -659,6 +743,10 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if not getattr(args, "func", None):
+        return cmd_overview(args)
+    if getattr(args, "extra", None) and args.extra[:1] == ["--"]:
+        args.extra = args.extra[1:]
     for attr in ("break_lock", "yes", "force", "target", "detailed_exitcode", "delete_records"):
         if not hasattr(args, attr):
             setattr(args, attr, [] if attr == "target" else False)

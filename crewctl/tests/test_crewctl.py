@@ -1430,5 +1430,76 @@ class Packaging(unittest.TestCase):
                 cli.main_entry()
         self.assertEqual(caught.exception.code, 0)
 
+
+class ReviewCommands(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.kit = os.path.join(self.tmp, "kit")
+        self.project = os.path.join(self.tmp, "proj")
+        os.makedirs(self.kit)
+        os.makedirs(self.project)
+        self.log = os.path.join(self.tmp, "args.txt")
+        with open(os.path.join(self.kit, "install.sh"), "w") as handle:
+            handle.write(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{self.log}"\nexit ${{FAKE_EXIT:-0}}\n')
+        patcher = mock.patch.dict(os.environ, {"CREWCTL_REVIEW_KIT": self.kit})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_cli(self, *argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["--no-color", *argv])
+        return code, buffer.getvalue()
+
+    def test_no_command_prints_the_two_jobs(self):
+        code, out = self.run_cli()
+        self.assertEqual(code, 0)
+        self.assertIn("JOB 1", out)
+        self.assertIn("JOB 2", out)
+        self.assertEqual(self.run_cli("overview")[0], 0)
+
+    def test_install_passes_the_options_to_the_script(self):
+        code, _ = self.run_cli("review", "install", self.project, "--surface", "ide", "--reference-source", "/refs/x", "--force")
+        self.assertEqual(code, 0)
+        args = open(self.log).read().split("\n")
+        self.assertEqual(args[:5], [os.path.realpath(self.project), "--surface", "ide", "--reference-source", "/refs/x"])
+        self.assertIn("--force", args)
+
+    def test_install_defaults_to_crew_and_returns_the_script_status(self):
+        self.run_cli("review", "install", self.project)
+        self.assertEqual(open(self.log).read().split("\n")[1:3], ["--surface", "crew"])
+        with mock.patch.dict(os.environ, {"FAKE_EXIT": "2"}):
+            self.assertEqual(self.run_cli("review", "install", self.project)[0], 2)
+
+    def test_bad_project_and_missing_kit(self):
+        code, out = self.run_cli("review", "install", os.path.join(self.tmp, "nope"))
+        self.assertEqual(code, 1)
+        self.assertIn("is not a folder", out)
+        with mock.patch.dict(os.environ, {"CREWCTL_REVIEW_KIT": os.path.join(self.tmp, "empty")}), \
+                mock.patch("os.path.isfile", side_effect=lambda p: False if p.endswith("install.sh") else os.path.exists(p)):
+            code, out = self.run_cli("review", "where")
+        self.assertEqual(code, 1)
+        self.assertIn("Cannot find the agent-review kit", out)
+
+    def test_where_and_check(self):
+        code, out = self.run_cli("review", "where")
+        self.assertEqual((code, self.kit in out.replace("~", os.path.expanduser("~"))), (0, True))
+        code, out = self.run_cli("review", "check", self.project)
+        self.assertEqual(code, 1)
+        self.assertIn("Install the kit first", out)
+        tools = os.path.join(self.project, "tools", "agent_review")
+        os.makedirs(tools)
+        with open(os.path.join(tools, "check_citations.py"), "w") as handle:
+            handle.write("import sys\nprint('checked', sys.argv[1:])\nsys.exit(3)\n")
+        code, _ = self.run_cli("review", "check", self.project, "--", "--recent")
+        self.assertEqual(code, 3)
+
+    def test_real_kit_is_found_in_the_repository(self):
+        with mock.patch.dict(os.environ, {"CREWCTL_REVIEW_KIT": ""}):
+            code, out = self.run_cli("review", "where")
+        self.assertEqual(code, 0, out)
+        self.assertIn("aiops", out)
+
 if __name__ == "__main__":
     unittest.main()

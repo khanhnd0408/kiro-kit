@@ -2,6 +2,8 @@
 
 Manage Kiro Crew agents from JSON files, with Terraform-style state.
 
+`crewctl` also installs the agent-review kit into a project (`crewctl review install ...`). That is a separate job from creating the crew; see the [repository README](../README.md) for which command belongs to which. Run `crewctl` with no arguments for the overview.
+
 You write one small JSON file per crewmate. crewctl turns each one into the Kiro agent file that Crew uses (`~/.kiro/agents/<name>.json`), remembers what it wrote, and tells you if anything changes outside it. It never starts `kiro-cli`, the Crew gateway or a model, so it costs no credits.
 
 - How a crewmate is made, and what crewctl does and doesn't touch: [docs/how-crewmates-work.md](docs/how-crewmates-work.md)

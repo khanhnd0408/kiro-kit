@@ -14,8 +14,11 @@ The method is the same everywhere. Small adapters fit it to the Kiro surface you
 ```bash
 git clone <reference-repo-url> system_prompts_leaks                  # the public reference repository of that name
 git clone <this-repo-url> kiro-kit
-./kiro-kit/aiops/install.sh /path/to/your/project --reference-source ./system_prompts_leaks
+cd kiro-kit/crewctl && python3 -m pip install -e . && cd ..          # once: gives you the `crewctl` command
+crewctl review install /path/to/your/project --reference-source ../system_prompts_leaks
 ```
+
+`crewctl review install` runs `aiops/install.sh` with the same options (`--surface crew|ide`, `--reference-source PATH`, `--force`). You can still run `./kiro-kit/aiops/install.sh ...` directly. To re-check citations later: `crewctl review check /path/to/your/project`.
 
 Run these on the Gateway host. Then follow sections 4–6 of the [Crew guide](adapters/crew/README.md):
 
