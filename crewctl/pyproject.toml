@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crewctl"
+dynamic = ["version"]
+description = "Manage Kiro Crew agents and skills from JSON files, with Terraform-style state."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+crewctl = "crewctl.cli:main_entry"
+
+[tool.setuptools]
+packages = ["crewctl"]
+
+[tool.setuptools.dynamic]
+version = { attr = "crewctl.__version__" }
+
+[tool.setuptools.package-data]
+crewctl = ["models.json"]

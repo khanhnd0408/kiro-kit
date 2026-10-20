@@ -23,6 +23,21 @@ You should see the folders `crewctl`, `crews`, `docs`, `examples`, `tests`.
 
 Do not copy a `.crewctl` folder from the old machine. It is that machine's notes and must start empty here.
 
+## Step 1b. Install the `crewctl` command (once)
+
+This gives you a short `crewctl` command instead of `crewctl ...`. From the `crewctl` folder:
+```bash
+python3 -m pip install -e .
+```
+Use `pipx install -e .` instead if your system Python refuses `pip install` (some Linux systems do), or make a virtual environment first: `python3 -m venv ~/.venvs/crewctl && ~/.venvs/crewctl/bin/pip install -e .` and use `~/.venvs/crewctl/bin/crewctl`. Keep the folder where it is: the `-e` means the command reads the files in place.
+
+Then tell it which team folder to use, so you do not have to repeat it:
+```bash
+export CREWCTL_DIR="$PWD/crews/devteam"
+crewctl --version
+```
+You should see `crewctl 0.1.0`. The `export` only lasts for this terminal; add the line to your shell profile (with the full path) to keep it. If you prefer not to install anything, every command below also works as `python3 -m crewctl -c crews/devteam <command>`.
+
 ## Step 2. Make sure Crew has started once
 
 ```bash
@@ -32,7 +47,7 @@ You should see: `Kiro Crew gateway is running`. If it is not running, open the C
 
 Then ask crewctl whether it can find Crew's own tool servers (`kirocrew-core` and `kirocrew-cron`). crewctl needs them to give the orchestrator its spawn tools:
 ```bash
-python3 -m crewctl crew-servers
+crewctl crew-servers
 ```
 You should see `found` next to both and the line `Nothing to fix.`
 
@@ -46,7 +61,7 @@ If it says `missing`, follow what it prints. In short:
   "cron": { "command": "/full/path/to/kirocrew", "args": ["mcp-cron"] }
 }
 ```
-Run `python3 -m crewctl crew-servers` again; it should now say `found from crewctl.json`.
+Run `crewctl crew-servers` again; it should now say `found from crewctl.json`.
 
 ### Or set the team up without Crew's tool servers
 
@@ -74,7 +89,7 @@ This makes every crewmate use its paid model (Sonnet 5.5 for most, Opus 5.5 for 
 ## Step 4. Check the model names exist on this machine
 
 ```bash
-python3 -m crewctl -c crews/devteam models
+crewctl models
 ```
 Look at the column **IN YOUR CREW LIST**. These names must say yes: `claude-sonnet-5.5`, `claude-opus-5.5`, `claude-sonnet-4.5`, `deepseek-3.2`.
 
@@ -83,7 +98,7 @@ If a name is missing, Crew spells it differently on this machine. Find the real 
 ## Step 5. Check the config
 
 ```bash
-python3 -m crewctl -c crews/devteam validate
+crewctl validate
 ```
 You should see ten crewmate lines and the last line: `OK: 10 crewmate(s) valid.`
 If you see `ERROR`, read the message; it names the file and the problem.
@@ -92,11 +107,11 @@ If you see `ERROR`, read the message; it names the file and the problem.
 
 First look at what will be written (nothing is written yet):
 ```bash
-python3 -m crewctl -c crews/devteam skills plan
+crewctl skills plan
 ```
 You should see ten lines starting with `+ create`. Then write them:
 ```bash
-python3 -m crewctl -c crews/devteam skills apply
+crewctl skills apply
 ```
 Type `yes` when asked. You should see `Apply complete: 10 created`.
 
@@ -105,11 +120,11 @@ They are written to `~/.kiro/crew/skills/`. Crew re-reads that folder by itself 
 ## Step 7. Create the agent files
 
 ```bash
-python3 -m crewctl -c crews/devteam plan
+crewctl plan
 ```
 You should see ten lines starting with `+`. Then:
 ```bash
-python3 -m crewctl -c crews/devteam apply
+crewctl apply
 ```
 Type `yes`. You should see `Apply complete: 10 created`. The files are in `~/.kiro/agents/`.
 
@@ -117,11 +132,11 @@ Type `yes`. You should see `Apply complete: 10 created`. The files are in `~/.ki
 
 An agent file alone is not a crewmate. This step creates the Crew record. First look at the commands:
 ```bash
-python3 -m crewctl -c crews/devteam register
+crewctl register
 ```
 You should see ten lines like `kirocrew agent create --name go-agent --kiro-agent go-agent --workspace default`. Then run them:
 ```bash
-python3 -m crewctl -c crews/devteam register --run
+crewctl register --run
 ```
 Check:
 ```bash
@@ -137,7 +152,7 @@ kirocrew config get agents.orchestrator-agent
 ```
 You should see `display_name`, `description` and `triggers` filled in. Then open the dashboard (Agent Capabilities, then Agents) and check that no crewmate says "No description".
 
-If one is empty, run `python3 -m crewctl -c crews/devteam register` again. It lists what is still missing; `register --run` fixes it.
+If one is empty, run `crewctl register` again. It lists what is still missing; `register --run` fixes it.
 
 **About the "Capabilities" and template-inheritance fields.** The Capabilities page shows each crewmate's tools, skills, MCP servers, prompt and model, read from its agent file. A crewmate made this way points straight at its own template, which Crew calls "shared" mode, so nothing is inherited from a parent and the "forked from" field stays empty. Inheritance only exists once you open a crewmate's Capabilities page and enroll it, which makes Crew keep a private copy that inherits from the template. Skills appear on that page only after Step 6 has installed them. Enrolling is optional and has a side effect: see `docs/how-crewmates-work.md`, section "Capabilities and inheritance".
 
@@ -170,14 +185,14 @@ Use the dashboard chat for each.
 ## Changing things later
 
 - Edit a file in `crews/devteam`, then run `plan` to see the change, then `apply`.
-- `python3 -m crewctl -c crews/devteam status` shows one line per crewmate.
-- Remove everything: `python3 -m crewctl -c crews/devteam skills destroy`, then `python3 -m crewctl -c crews/devteam destroy --delete-records`.
+- `crewctl status` shows one line per crewmate.
+- Remove everything: `crewctl skills destroy`, then `crewctl destroy --delete-records`.
 
 ## If something goes wrong
 
 | You see | What it means | What to do |
 |---|---|---|
-| `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet, or left the entry out | Run `python3 -m crewctl crew-servers` and follow it (Step 2) |
+| `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet, or left the entry out | Run `crewctl crew-servers` and follow it (Step 2) |
 | `model ... is not available` or a model error in `models` | The model name or your plan does not match | Do Steps 3 and 4 |
 | `exists and was not created by crewctl` (skills) | A skill with that name is already in the folder | Rename the skill in `crews/devteam/skills/<name>.skill.json` (and in the agent files that list it), or remove the old one yourself |
 | `changed outside crewctl` | Someone edited a generated file by hand | Look at the file; if you want the config to win, add `--force` (a backup is kept) |

@@ -1414,5 +1414,21 @@ class CrewServerFallback(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertIn("crew_server_commands", out, bad)
 
+
+class Packaging(unittest.TestCase):
+    def test_pyproject_exposes_a_crewctl_command_that_exists(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        text = open(os.path.join(root, "pyproject.toml"), encoding="utf-8").read()
+        self.assertIn('crewctl = "crewctl.cli:main_entry"', text)
+        self.assertTrue(callable(cli.main_entry))
+        self.assertIn('crewctl = ["models.json"]', text)
+        self.assertTrue(os.path.exists(os.path.join(root, "crewctl", "models.json")))
+
+    def test_main_entry_exits_with_the_command_status(self):
+        with mock.patch.object(sys, "argv", ["crewctl", "--version"]), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main_entry()
+        self.assertEqual(caught.exception.code, 0)
+
 if __name__ == "__main__":
     unittest.main()

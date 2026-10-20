@@ -670,3 +670,8 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return 130
+
+
+def main_entry():
+    """Console-script entry point: `crewctl ...` (same as `python3 -m crewctl ...`)."""
+    sys.exit(main())

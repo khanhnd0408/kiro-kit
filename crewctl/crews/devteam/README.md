@@ -52,12 +52,14 @@ On a machine where Crew is installed and has started once (it writes `~/.kiro/ag
 
 ```bash
 cd crewctl
-python3 -m crewctl -c crews/devteam validate
-python3 -m crewctl -c crews/devteam skills plan          # shows the SKILL.md files
-python3 -m crewctl -c crews/devteam skills apply         # writes them to ~/.kiro/crew/skills
-python3 -m crewctl -c crews/devteam plan                 # shows the ten agent files
-python3 -m crewctl -c crews/devteam apply
-python3 -m crewctl -c crews/devteam register             # prints the kirocrew commands; add --run to execute them
+python3 -m pip install -e .                 # once: gives you the short `crewctl` command
+export CREWCTL_DIR="$PWD/crews/devteam"    # the team folder, so you do not repeat -c
+crewctl validate
+crewctl skills plan          # shows the SKILL.md files
+crewctl skills apply         # writes them to ~/.kiro/crew/skills
+crewctl plan                 # shows the ten agent files
+crewctl apply
+crewctl register             # prints the kirocrew commands; add --run to execute them
 ```
 
 `register --run` also fills in each crewmate's display name, description and triggers. To remove everything: `skills destroy`, `destroy --delete-records`.
