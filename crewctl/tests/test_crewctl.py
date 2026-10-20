@@ -1310,5 +1310,70 @@ class SkillGeneration(unittest.TestCase):
         self.assertIn("python3 /x/iac-security-review/scripts/changed_iac.py", files["SKILL.md"].decode())
         self.assertEqual(lint_rendered(specs[0], files), [])
 
+
+class CrewServerFallback(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.agents = os.path.join(self.tmp, "agents")
+        self.config = os.path.join(self.tmp, "crew")
+        os.makedirs(self.agents)
+        os.makedirs(self.config)
+
+    def write_settings(self, data):
+        with open(os.path.join(self.config, "crewctl.json"), "w") as handle:
+            json.dump(data, handle)
+
+    def agent(self):
+        with open(os.path.join(self.config, "a.agent.json"), "w") as handle:
+            json.dump({"name": "a", "prompt": "p", "tools": ["fs_read"], "crew_servers": {"core": {"tools": ["spawn_run"]}}}, handle)
+
+    def run_cli(self, *argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.main(["--no-color", "-c", self.config, "--agents-dir", self.agents, "--crew-home", self.tmp, *argv])
+        return code, buffer.getvalue()
+
+    def test_missing_file_is_an_error_that_points_to_the_diagnostic(self):
+        self.agent()
+        code, out = self.run_cli("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("crew-servers", out)
+
+    def test_diagnostic_prints_a_snippet_when_missing(self):
+        code, out = self.run_cli("crew-servers")
+        self.assertEqual(code, 1)
+        self.assertIn("NOT FOUND", out)
+        self.assertIn('"crew_server_commands"', out)
+        self.assertIn("mcp-core", out)
+        self.assertIn("kiro_crew", out)
+
+    def test_setting_replaces_the_missing_file(self):
+        self.agent()
+        self.write_settings({"crew_server_commands": {"core": {"command": "/opt/x/kirocrew", "args": ["mcp-core"]}}})
+        code, out = self.run_cli("apply", "-y")
+        self.assertEqual(code, 0, out)
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertEqual(written["mcpServers"]["kirocrew-core"], {"command": "/opt/x/kirocrew", "args": ["mcp-core"]})
+        code, out = self.run_cli("crew-servers")
+        self.assertIn("found from crewctl.json", out)
+
+    def test_setting_wins_over_the_file(self):
+        with open(os.path.join(self.agents, "kirocrew.json"), "w") as handle:
+            json.dump({"mcpServers": {"kirocrew-core": {"command": "/from/file", "args": ["mcp-core"]}}}, handle)
+        self.write_settings({"crew_server_commands": {"kirocrew-core": {"command": "/from/setting", "args": ["x"]}}})
+        self.agent()
+        self.run_cli("apply", "-y")
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertEqual(written["mcpServers"]["kirocrew-core"]["command"], "/from/setting")
+
+    def test_bad_setting_is_rejected(self):
+        for bad in ("text", {"nope": {"command": "x", "args": []}}, {"core": {"command": "", "args": []}},
+                    {"core": {"command": "x", "args": "mcp-core"}}, {"core": {"command": "x", "args": [], "env": {"A": "b"}}}):
+            self.write_settings({"crew_server_commands": bad})
+            code, out = self.run_cli("validate")
+            self.assertEqual(code, 1, bad)
+            self.assertIn("crew_server_commands", out, bad)
+
 if __name__ == "__main__":
     unittest.main()

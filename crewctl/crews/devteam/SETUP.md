@@ -30,11 +30,25 @@ kirocrew status
 ```
 You should see: `Kiro Crew gateway is running`. If it is not running, open the Crew app (or run `kirocrew gateway`, as your install documents), wait a minute, and try again.
 
-Then check that Crew wrote its tool file:
+Then ask crewctl whether it can find Crew's own tool servers (`kirocrew-core` and `kirocrew-cron`). crewctl needs them to give the orchestrator its spawn tools:
 ```bash
-ls ~/.kiro/agents/kirocrew.json
+python3 -m crewctl crew-servers
 ```
-You should see the file name printed. crewctl needs this file. If it is missing, Crew has not fully started yet.
+You should see `found` next to both and the line `Nothing to fix.`
+
+If it says `missing`, follow what it prints. In short:
+1. Start Crew (the desktop app, or the gateway), wait a minute, and run the command again. Crew writes `~/.kiro/agents/kirocrew.json` when its gateway starts.
+2. Run `kirocrew doctor`. A known cause: when Crew cannot find its own `kirocrew` launcher (for example, the gateway runs as a background service whose PATH does not include it), it leaves the entry out. Put `kirocrew` on that service's PATH and restart the gateway.
+3. If the file still does not appear, tell crewctl the command yourself. The command prints a ready-made block. Paste it into `crews/devteam/crewctl.json`, next to `"plan"`. It looks like this (use the real path from `which kirocrew`):
+```json
+"crew_server_commands": {
+  "core": { "command": "/full/path/to/kirocrew", "args": ["mcp-core"] },
+  "cron": { "command": "/full/path/to/kirocrew", "args": ["mcp-cron"] }
+}
+```
+Run `python3 -m crewctl crew-servers` again; it should now say `found from crewctl.json`.
+
+If `kirocrew` itself is not installed (`kirocrew --version` fails), install Kiro Crew first; nothing else here works without it.
 
 ## Step 3. Switch to the paid plan
 
@@ -147,7 +161,7 @@ Use the dashboard chat for each.
 
 | You see | What it means | What to do |
 |---|---|---|
-| `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet | Do Step 2 again |
+| `cannot find 'kirocrew-core' on this machine` | Crew has not written its tool file yet, or left the entry out | Run `python3 -m crewctl crew-servers` and follow it (Step 2) |
 | `model ... is not available` or a model error in `models` | The model name or your plan does not match | Do Steps 3 and 4 |
 | `exists and was not created by crewctl` (skills) | A skill with that name is already in the folder | Rename the skill in `crews/devteam/skills/<name>.skill.json` (and in the agent files that list it), or remove the old one yourself |
 | `changed outside crewctl` | Someone edited a generated file by hand | Look at the file; if you want the config to win, add `--force` (a backup is kept) |

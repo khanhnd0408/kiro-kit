@@ -140,7 +140,7 @@ A plain agent file doesn't have them. **An agent that must hand work to other cr
 "crew_servers": ["core"]
 ```
 
-crewctl adds the `kirocrew-core` server and the `@kirocrew-core` tool for you. It looks up the right command on the machine it runs on (in `~/.kiro/agents/kirocrew.json`, which Crew writes), so no install path goes into your repo and it keeps working after Crew moves or updates. Only `command` and `args` are copied.
+crewctl adds the `kirocrew-core` server and the `@kirocrew-core` tool for you. It looks up the right command on the machine it runs on (in `~/.kiro/agents/kirocrew.json`, which Crew writes), so no install path goes into your repo and it keeps working after Crew moves or updates. Only `command` and `args` are copied. If that file has no `kirocrew-core` entry on a machine, run `python3 -m crewctl crew-servers`; it explains the usual causes and prints a `crew_server_commands` block for `crewctl.json` that supplies the command by hand.
 
 To keep a powerful agent in check, hide tools it doesn't need:
 

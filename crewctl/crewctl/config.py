@@ -41,7 +41,7 @@ MANAGED_KIRO_KEYS = frozenset({"name", "description", "model", "prompt", "tools"
 CREW_SERVERS = {"core": "kirocrew-core", "cron": "kirocrew-cron"}
 CREW_SERVER_OPTIONS = ("disabledTools", "tools")
 TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,60}\Z")
-SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir")
+SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir", "crew_server_commands")
 
 SECRET_PATTERNS = [
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
@@ -74,6 +74,7 @@ class Settings:
     allow_unknown_models: bool = False
     skills_dir: str = ""            # where destination "crew" skills go; default <crew_home>/skills
     project_skills_dir: str = ""    # where destination "project" skills go; relative paths start at the config folder
+    crew_server_commands: dict = field(default_factory=dict)   # {"core": {"command": ..., "args": [...]}}: used when kirocrew.json has none
 
 
 @dataclass
@@ -107,10 +108,11 @@ class AgentSpec:
 class CrewServerLookup:
     """Finds the command for Crew's own MCP servers in <agents folder>/kirocrew.json (read once)."""
 
-    def __init__(self, agents_dir):
+    def __init__(self, agents_dir, overrides=None):
         self.path = os.path.join(agents_dir, "kirocrew.json")
         self._servers = None
         self.error = ""
+        self.overrides = overrides or {}
 
     def _load(self):
         self._servers = {}
@@ -127,6 +129,8 @@ class CrewServerLookup:
 
     def entry(self, server_name):
         """Return {"command": ..., "args": [...]} or None. Only these two keys are ever copied."""
+        if server_name in self.overrides:        # set by hand in crewctl.json, so it wins over the file
+            return {"command": self.overrides[server_name]["command"], "args": list(self.overrides[server_name]["args"])}
         if self._servers is None:
             self._load()
         found = self._servers.get(server_name)
@@ -181,6 +185,7 @@ def load_settings(config_dir, problems, overrides=None):
     if settings.plan not in ("free", "paid"):
         problems.append(Problem("error", "crewctl.json", f"plan must be \"free\" or \"paid\", not {settings.plan!r}"))
         settings.plan = "free"
+    settings.crew_server_commands = _check_server_commands(settings.crew_server_commands, problems)
     if not isinstance(settings.allow_unknown_models, bool):
         problems.append(Problem("error", "crewctl.json", "allow_unknown_models must be true or false"))
         settings.allow_unknown_models = False
@@ -190,6 +195,33 @@ def load_settings(config_dir, problems, overrides=None):
     if settings.project_skills_dir:
         settings.project_skills_dir = os.path.abspath(os.path.join(config_dir, os.path.expanduser(settings.project_skills_dir)))
     return settings
+
+
+def _check_server_commands(value, problems):
+    """crewctl.json "crew_server_commands": {"core": {"command": "/path/kirocrew", "args": ["mcp-core"]}}. Returns {full name: entry}."""
+    if value in ({}, None, ""):
+        return {}
+    where = "crewctl.json"
+    if not isinstance(value, dict):
+        problems.append(Problem("error", where, "crew_server_commands must be an object like "
+                                                '{"core": {"command": "/path/to/kirocrew", "args": ["mcp-core"]}}'))
+        return {}
+    out = {}
+    for key, entry in value.items():
+        if key.startswith("_"):
+            continue
+        full = CREW_SERVERS.get(key, key if key in CREW_SERVERS.values() else None)
+        if full is None:
+            problems.append(Problem("error", where, f"crew_server_commands: unknown server '{key}'. Allowed: {', '.join(CREW_SERVERS)}"))
+            continue
+        command = entry.get("command") if isinstance(entry, dict) else None
+        args = entry.get("args", []) if isinstance(entry, dict) else None
+        if (not isinstance(command, str) or not command.strip() or "\n" in command or not _is_str_list(args)
+                or set(entry) - {"command", "args"}):
+            problems.append(Problem("error", where, f"crew_server_commands.{key} must be {{\"command\": \"...\", \"args\": [\"...\"]}} and nothing else"))
+            continue
+        out[full] = {"command": command.strip(), "args": list(args)}
+    return out
 
 
 def _discover(config_dir):
@@ -507,7 +539,8 @@ def _add_crew_servers(spec, wanted, where, problems, lookup):
         if entry is None:
             problems.append(Problem("error", where, f"crew_servers: cannot find '{server}' on this machine. "
                                                     f"{lookup.error or 'Its entry is missing from kirocrew.json.'} Run crewctl on the "
-                                                    "machine where Crew is installed and has started once."))
+                                                    "machine where Crew is installed and has started once. If Crew never writes that file on this "
+                                                    "machine, run `crewctl crew-servers` and follow what it prints."))
             continue
         if opts.get("disabledTools"):
             entry["disabledTools"] = list(opts["disabledTools"])
@@ -547,7 +580,7 @@ def load_config(config_dir, overrides=None, local_models=None):
                 problems.append(Problem("error", "_defaults.json", f"unknown field '{key}'"))
                 defaults.pop(key)
 
-    crew_lookup = CrewServerLookup(settings.agents_dir)
+    crew_lookup = CrewServerLookup(settings.agents_dir, settings.crew_server_commands)
     specs, seen_names, seen_files = [], {}, {}
     for path in _discover(config_dir):
         where = os.path.relpath(path, config_dir)

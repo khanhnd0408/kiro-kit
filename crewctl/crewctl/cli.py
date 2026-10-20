@@ -352,6 +352,55 @@ def cmd_skills(args):
     return 0
 
 
+def cmd_crew_servers(args):
+    """Explain where crewctl looks for Crew's own tool servers and what to do if they are missing."""
+    import shutil
+    from .config import CrewServerLookup, CREW_SERVERS, load_settings
+    out = _out(args)
+    problems = []
+    config = _config_dir(args)
+    settings = load_settings(config, problems, _overrides(args))   # works without a config folder: environment and defaults
+    for item in problems:
+        print(out.red(f"{item.level}: {item.where}: {item.message}"))
+    lookup = CrewServerLookup(settings.agents_dir, settings.crew_server_commands)
+    print(f"Agents folder:   {_tilde(settings.agents_dir)}  ({'exists' if os.path.isdir(settings.agents_dir) else 'MISSING'})")
+    print(f"Crew file:       {_tilde(lookup.path)}  ({'found' if os.path.isfile(lookup.path) else 'NOT FOUND'})")
+    binary = shutil.which(settings.kirocrew_bin)
+    print(f"kirocrew on PATH: {binary or 'not found'}")
+    missing = []
+    for short, full in CREW_SERVERS.items():
+        entry = lookup.entry(full)
+        if entry is None:
+            print(f"  {full:<15} {out.red('missing')}")
+            missing.append(short)
+        else:
+            source = "crewctl.json" if full in settings.crew_server_commands else "Crew's file"
+            exists = os.path.exists(entry["command"]) or shutil.which(entry["command"])
+            note = "" if exists else out.red("  (this command does not exist on this machine)")
+            print(f"  {full:<15} {out.green('found')} from {source}: {entry['command']} {' '.join(entry.get('args', []))}{note}")
+    if not missing:
+        print(out.green("\nNothing to fix."))
+        return 0
+    print("\nWhat to try, in order:")
+    print("  1. Start Crew (the desktop app, or the gateway) and wait about a minute, then run this command again.")
+    print("     Crew writes the file when its gateway starts. `kirocrew status` should say the gateway is running.")
+    print("  2. Run `kirocrew doctor`; it checks the install. A known cause (from Crew's source): when Crew cannot find its own")
+    print("     `kirocrew` launcher, for example because the gateway runs as a background service whose PATH lacks it, it leaves")
+    print("     the entry out of the file. Putting `kirocrew` on that service's PATH, then restarting the gateway, fixes it.")
+    print("  3. If the file still does not appear, tell crewctl the command yourself. In crewctl.json add:")
+    command = binary or "/full/path/to/kirocrew"
+    snippet = {"crew_server_commands": {s: {"command": command, "args": ["mcp-" + s]} for s in missing}}
+    print(json.dumps(snippet, indent=2))
+    print("     `mcp-core` and `mcp-cron` are what Crew 0.8.0 writes for its own servers. I could not confirm them for other"
+          " versions, so compare with `kirocrew --version` and Crew's documentation.")
+    print("     If you have no standalone `kirocrew` program, use the Python that runs Crew instead:")
+    print('       {"command": "/path/to/that/python", "args": ["-P", "-m", "kiro_crew", "mcp-core"]}')
+    if not binary:
+        print("     `kirocrew` was not found on PATH, so replace /full/path/to/kirocrew with the real path "
+              "(`which kirocrew` on Linux and macOS, `where kirocrew` on Windows).")
+    return 1
+
+
 def cmd_plan(args):
     out = _out(args)
     ctx = _load(args, out)
@@ -568,6 +617,7 @@ def build_parser():
     p = sub.add_parser("lint-skills", help="check SKILL.md files (folder or file paths)")
     p.add_argument("paths", nargs="+")
     p.set_defaults(func=cmd_lint_skills)
+    sub.add_parser("crew-servers", help="check where Crew's own tool servers are found").set_defaults(func=cmd_crew_servers)
     p = sub.add_parser("skills", help="build SKILL.md files from skills/*.skill.json")
     p.add_argument("skills_action", choices=["new", "plan", "apply", "destroy"])
     p.add_argument("name", nargs="?", help="skill name (for `new`)")
