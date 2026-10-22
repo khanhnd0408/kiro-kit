@@ -26,7 +26,9 @@
     "@kirocrew-core/monitor_start",
     "@kirocrew-core/monitor_update",
     "@kirocrew-core/monitor_inspect",
-    "@kirocrew-core/autonudge_stop"
+    "@kirocrew-core/autonudge_stop",
+    "@kirocrew-core/session_ledger_record",
+    "@kirocrew-core/session_ledger_read"
   ],
   "crew_servers": {
     "core": {
@@ -41,7 +43,9 @@
         "monitor_start",
         "monitor_update",
         "monitor_inspect",
-        "autonudge_stop"
+        "autonudge_stop",
+        "session_ledger_record",
+        "session_ledger_read"
       ]
     }
   },

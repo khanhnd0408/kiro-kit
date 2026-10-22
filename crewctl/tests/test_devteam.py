@@ -245,6 +245,104 @@ class CollectEvidence(Tmp):
         self.assertIn("404", err)
 
 
+class WatchRuns(Tmp):
+    """The zero-token watchdog cron: it reads spawn_list lines and only speaks when a person is needed."""
+
+    def setUp(self):
+        super().setUp()
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("watch_runs", os.path.join(PACK, "crons", "watch_runs.py"))
+        self.m = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            spec.loader.exec_module(self.m)
+
+    SAMPLE = (
+        "a1b2c3d4  [running] (1260s, 37 turns, fs_write)  write the parser\n"
+        "e5f6a7b8  [running] (900s)  queued task\n"
+        "c9d0e1f2  [awaiting-approval]  needs approval task\n"
+        "0a0b0c0d  [done] error: backend gone (45s)  failed one\n"
+        "ffeeddcc  [done]  all good\n"
+        "\nAvailable agents: go-agent, python-agent\n")
+
+    def test_it_reads_every_kind_of_spawn_list_line_and_ignores_the_rest(self):
+        runs = {r["id"]: r for r in self.m.parse_runs(self.SAMPLE)}
+        self.assertEqual(set(runs), {"a1b2c3d4", "e5f6a7b8", "c9d0e1f2", "0a0b0c0d", "ffeeddcc"})
+        self.assertEqual((runs["a1b2c3d4"]["elapsed"], runs["a1b2c3d4"]["turns"], runs["a1b2c3d4"]["tool"]), (1260, 37, "fs_write"))
+        self.assertEqual((runs["e5f6a7b8"]["state"], runs["e5f6a7b8"]["turns"]), ("running", 0))
+        self.assertEqual(runs["0a0b0c0d"]["error"], "backend gone")
+        self.assertEqual(self.m.parse_runs("No subagents running.\n\nAvailable agents: x"), [])
+
+    def test_alerts_for_approval_failure_and_a_run_that_never_started_but_not_for_healthy_runs(self):
+        alerts, _ = self.m.analyze(self.m.parse_runs(self.SAMPLE), {}, now=10_000)
+        text = "\n".join(alerts)
+        self.assertIn("c9d0e1f2: waits for your approval", text)
+        self.assertIn("0a0b0c0d: failed - backend gone", text)
+        self.assertIn("e5f6a7b8: has run 900s with no turn", text)
+        self.assertIn("Do not start a replacement", text)
+        self.assertNotIn("a1b2c3d4", text)                       # working
+        self.assertNotIn("ffeeddcc", text)                       # finished cleanly
+        self.assertEqual(len(alerts), 3)
+
+    def test_a_stalled_run_is_reported_after_the_configured_number_of_unchanged_checks(self):
+        run = lambda: self.m.parse_runs("aa11  [running] (700s, 12 turns, bash)  task")
+        state = {}
+        for tick in range(3):
+            alerts, state = self.m.analyze(run(), state, now=1000 + tick * 300)
+            self.assertEqual(alerts, [], tick)
+        alerts, state = self.m.analyze(run(), state, now=1000 + 3 * 300)
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("turn count stuck at 12 for 3 checks", alerts[0])
+        progress = self.m.parse_runs("aa11  [running] (1000s, 14 turns, bash)  task")
+        alerts, state = self.m.analyze(progress, state, now=3000)
+        self.assertEqual(alerts, [])
+        self.assertEqual(state["runs"]["aa11"]["same_ticks"], 0)
+
+    def test_the_same_alert_is_not_repeated_until_the_repeat_time_has_passed(self):
+        runs = self.m.parse_runs("bb22  [awaiting-approval]  task")
+        first, state = self.m.analyze(runs, {}, now=0)
+        again, state = self.m.analyze(runs, state, now=600)
+        later, state = self.m.analyze(runs, state, now=31 * 60)
+        self.assertEqual((len(first), len(again), len(later)), (1, 0, 1))
+
+    def test_too_long_and_custom_limits(self):
+        runs = self.m.parse_runs("cc33  [running] (9000s, 50 turns, x)  task")
+        alerts, _ = self.m.analyze(runs, {}, now=0)
+        self.assertIn("running 150 minutes", alerts[0])
+        alerts, _ = self.m.analyze(runs, {}, now=0, config={"max_minutes": 500})
+        self.assertEqual(alerts, [])
+
+    def test_run_is_silent_when_nothing_needs_a_person_and_sends_one_message_otherwise(self):
+        class Skipped(Exception):
+            pass
+
+        class Ctx:
+            def __init__(self, listing, message=""):
+                self.listing, self.message, self.sent = listing, message, []
+
+            def call_tool(self, server, tool, args):
+                assert (server, tool, args) == ("kirocrew-core", "spawn_list", {})
+                return self.listing
+
+            def notify(self, text, **kwargs):
+                self.sent.append(text)
+        with mock.patch.dict(os.environ, {"KIROCREW_HOME": self.tmp}):
+            os.makedirs(os.path.join(self.tmp, "crons"))
+            quiet = Ctx("dd44  [running] (60s, 2 turns, x)  task\n")
+            with self.assertRaises(Exception) as stop:
+                self.m.run(quiet)
+            self.assertEqual(type(stop.exception).__name__, "Skip")
+            self.assertEqual(quiet.sent, [])
+            noisy = Ctx(self.SAMPLE, message='{"never_started_secs": 60}')
+            self.m.run(noisy)
+            self.assertEqual(len(noisy.sent), 1)
+            self.assertTrue(noisy.sent[0].startswith("Subagent watchdog:"))
+            self.assertTrue(os.path.exists(os.path.join(self.tmp, "crons", "watch_runs.state.json")))
+            repeat = Ctx(self.SAMPLE)
+            with self.assertRaises(Exception):                       # same alerts a moment later: silent
+                self.m.run(repeat)
+            self.assertEqual(repeat.sent, [])
+
+
 class Pack(Tmp):
     def setUp(self):
         super().setUp()
@@ -341,7 +439,8 @@ class Pack(Tmp):
         prompt = self.compiled_prompts()["orchestrator-agent"]
         monitor = ("monitor_start", "monitor_update", "monitor_inspect", "autonudge_stop")
         tools = agent["crew_servers"]["core"]["tools"]
-        for tool in monitor + ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "ask_question"):
+        for tool in monitor + ("spawn_run", "spawn_status", "spawn_list", "spawn_steer", "spawn_continue", "ask_question",
+                               "session_ledger_record", "session_ledger_read"):
             self.assertIn(tool, tools)
             # the loop runs unattended, so every tool it uses each cycle is pre-approved
             self.assertIn(f"@kirocrew-core/{tool}", agent["allowed_tools"], tool)
@@ -356,7 +455,9 @@ class Pack(Tmp):
         self.assertNotIn("Call wait with", prompt)
         for needle in ("monitor_start", "interval_secs = CHECK_EVERY_SECONDS", "max_cycles = MAX_ROUNDS", "gate = false",
                        "max_runtime_secs = CHECK_EVERY_SECONDS x MAX_ROUNDS + 600", "monitor_inspect", "autonudge_stop",
-                       "monitor_update", "END YOUR TURN", "EXIT:", "short task (under 30 minutes)", "even for a 2-minute job"):
+                       "monitor_update", "END YOUR TURN", "EXIT:", "short task (under 30 minutes)", "even for a 2-minute job",
+                       "SHORT_JOB_MINUTES", "NO LOOP", "ARM THE LOOP", "Call spawn_list ONCE", "session_ledger_record", "session_ledger_read",
+                       "Never start a second run for work that already has one", "BACK OFF", "has NOT started"):
             self.assertIn(needle, prompt, needle)
         # nothing of the earlier script design is left anywhere in the pack
         for folder, dirs, files in os.walk(PACK):
