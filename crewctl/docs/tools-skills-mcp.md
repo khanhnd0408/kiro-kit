@@ -134,6 +134,15 @@ or only some of its tools:
 ```
 crewctl checks that each name exists in the file and is not `disabled`, sets `includeMcpJson` to true, and adds `@fetch` (or `@victorialogs/query`, ...) to the agent's `tools`. **It copies nothing:** the command, URL, environment and tokens stay in `mcp.json`, and Kiro reads them from there when the agent starts. Two things to know: `includeMcpJson` makes Kiro load every server in that file for this agent, but the agent can only use the tools its `tools` list names; and a tool you want to run without asking must also be listed in `allowed_tools`.
 
+**Adding a server to crewmates that already exist.** Do not edit each file by hand:
+```bash
+crewctl mcp add victorialogs inspector-agent devsecops-agent                 # all of the server's tools
+crewctl mcp add victorialogs inspector-agent --tools query,hits              # only these tools
+crewctl mcp add fetch --all                                                  # every crewmate in the config
+crewctl mcp remove victorialogs devsecops-agent                              # take it away again
+```
+Each command lists what it will change and asks `yes` (or `-y`). It edits only the `mcp_json_servers` line in the crewmates' `*.agent.json` files, keeps the other fields and their order, and saves the old files under `.crewctl/backups/`. If the result would make the config invalid (for example a file that says `include_mcp_json: false`), it puts all the files back. Then `crewctl plan` shows the change to each generated agent file and `crewctl apply` writes it. `register` is not needed, because MCP servers are part of the agent file, not of Crew's record. Start a new chat with each crewmate afterwards; an open chat keeps its old tool list.
+
 Two commands help you choose:
 ```bash
 crewctl mcp list                 # the servers in mcp.json (kind, enabled or disabled) and which crewmates use them

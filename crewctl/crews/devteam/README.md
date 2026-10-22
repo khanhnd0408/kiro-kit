@@ -104,7 +104,14 @@ There is one orchestrator, on purpose: with several specialists, one crewmate ha
 crewctl mcp list                       # find the server names
 crewctl mcp tools victorialogs         # see the tool names (asks before starting the server)
 ```
-then add `"mcp_json_servers": { "victorialogs": {"tools": ["query"]}, "victoriametrics": {}, "tempo": {} }` (your server names) to `inspector-agent.agent.json`, run `crewctl apply`, and start a new chat. The same field works for any crewmate.
+then attach them (your server names) to the crewmate and apply:
+```bash
+crewctl mcp add victorialogs inspector-agent --tools query
+crewctl mcp add victoriametrics inspector-agent
+crewctl mcp add tempo inspector-agent
+crewctl plan && crewctl apply
+```
+Start a new chat with the inspector afterwards. The same commands work for any crewmate, and `--all` for the whole team.
 
 ## What is not verified
 

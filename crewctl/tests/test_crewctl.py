@@ -1657,6 +1657,82 @@ class McpCommands(unittest.TestCase):
         self.assertNotIn("hunter2hunter2", text)
         self.assertNotIn("TOKEN_FOR_TEST", text)
 
+    # ---- crewctl mcp add / remove
+    def agents_world(self, *names, **fields):
+        for name in names:
+            data = {"name": name, "prompt": "p", "tools": ["fs_read"], "description": "d", "triggers": "t"}
+            data.update(fields.get(name, {}))
+            json.dump(data, open(os.path.join(self.config, f"{name}.agent.json"), "w"), indent=2)
+
+    def config_of(self, name):
+        return json.load(open(os.path.join(self.config, f"{name}.agent.json")))
+
+    def test_add_gives_several_crewmates_a_server_in_one_command(self):
+        self.agents_world("a", "b", "c")
+        code, text = self.run_cli("mcp", "add", "fake", "a", "b", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.config_of("a")["mcp_json_servers"], ["fake"])
+        self.assertEqual(self.config_of("b")["mcp_json_servers"], ["fake"])
+        self.assertNotIn("mcp_json_servers", self.config_of("c"))
+        self.assertIn("`register` is not needed", text)
+        backups = os.path.join(self.config, ".crewctl", "backups")
+        self.assertEqual(sorted(f for _, _, fs in os.walk(backups) for f in fs), ["a.agent.json", "b.agent.json"])
+        self.assertEqual(list(self.config_of("a"))[:3], ["name", "prompt", "tools"])             # field order kept
+        code, text = self.run_cli("apply", "-y")                                                  # and the result applies
+        self.assertEqual(code, 0, text)
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertIn("@fake", written["tools"])
+        self.assertTrue(written["includeMcpJson"])
+
+    def test_add_all_with_tools_then_widen_and_repeat_is_a_no_op(self):
+        self.agents_world("a", "b")
+        self.assertEqual(self.run_cli("mcp", "add", "fake", "--all", "--tools", "alpha,beta", "-y")[0], 0)
+        self.assertEqual(self.config_of("a")["mcp_json_servers"], {"fake": {"tools": ["alpha", "beta"]}})
+        code, text = self.run_cli("mcp", "add", "fake", "--all", "--tools", "alpha,beta", "-y")
+        self.assertIn("Nothing to change", text)
+        self.assertEqual(self.run_cli("mcp", "add", "fake", "a", "--tools", "gamma", "-y")[0], 0)
+        self.assertEqual(self.config_of("a")["mcp_json_servers"], {"fake": {"tools": ["alpha", "beta", "gamma"]}})
+        self.assertEqual(self.config_of("b")["mcp_json_servers"], {"fake": {"tools": ["alpha", "beta"]}})
+
+    def test_add_a_second_server_keeps_the_first_and_remove_takes_one_away(self):
+        self.write_mcp({**json.load(open(self.mcp))["mcpServers"], "second": {"command": "x"}})
+        self.agents_world("a", a={"mcp_json_servers": ["fake"]})
+        self.assertEqual(self.run_cli("mcp", "add", "second", "a", "-y")[0], 0)
+        self.assertEqual(self.config_of("a")["mcp_json_servers"], ["fake", "second"])
+        self.assertEqual(self.run_cli("mcp", "remove", "fake", "a", "-y")[0], 0)
+        self.assertEqual(self.config_of("a")["mcp_json_servers"], ["second"])
+        self.assertEqual(self.run_cli("mcp", "remove", "second", "a", "-y")[0], 0)
+        self.assertNotIn("mcp_json_servers", self.config_of("a"))
+        code, text = self.run_cli("mcp", "remove", "second", "a", "-y")
+        self.assertIn("Nothing to change", text)
+
+    def test_add_errors_and_nothing_is_written(self):
+        self.agents_world("a")
+        for argv, message in ((("nope", "a", "-y"), "'nope' is not in"), (("off", "a", "-y"), "is disabled in"),
+                              (("fake", "zzz", "-y"), "unknown crewmate(s): zzz"), (("fake", "-y"), "name the crewmates"),
+                              (("fake", "a", "--tools", "bad name", "-y"), "--tools takes tool names")):
+            code, text = self.run_cli("mcp", "add", *argv)
+            self.assertEqual(code, 1, argv)
+            self.assertIn(message, text)
+        self.assertNotIn("mcp_json_servers", self.config_of("a"))
+
+    def test_add_asks_first_and_refuses_without_a_terminal(self):
+        self.agents_world("a")
+        code, text = self.run_cli("mcp", "add", "fake", "a")
+        self.assertEqual(code, 1)
+        self.assertIn("Use --yes", text)
+        self.assertNotIn("mcp_json_servers", self.config_of("a"))
+
+    def test_add_is_undone_when_it_would_make_the_config_invalid(self):
+        self.agents_world("a", "b", a={"include_mcp_json": False})        # a refuses mcp_json_servers
+        before = open(os.path.join(self.config, "a.agent.json")).read()
+        code, text = self.run_cli("mcp", "add", "fake", "a", "b", "-y")
+        self.assertEqual(code, 1)
+        self.assertIn("so it was undone", text)
+        self.assertIn("needs include_mcp_json to be true", text)
+        self.assertEqual(open(os.path.join(self.config, "a.agent.json")).read(), before)
+        self.assertNotIn("mcp_json_servers", self.config_of("b"))          # the other file was put back too
+
     def test_tools_lists_every_tool_across_pages_over_stdio(self):
         code, text = self.run_cli("mcp", "tools", "fake", "-y")
         self.assertEqual(code, 0, text)

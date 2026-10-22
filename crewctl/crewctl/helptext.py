@@ -37,6 +37,8 @@ JOBS = [
         ("crewctl skills", "new|plan|apply|destroy [NAME] [--show] [-y]", "build SKILL.md files from skills/*.skill.json"),
         ("crewctl lint-skills", "PATH...", "check SKILL.md files against Kiro's and Crew's rules"),
         ("crewctl mcp list", "", "the MCP servers in mcp.json and which crewmates use them"),
+        ("crewctl mcp add", "SERVER [CREWMATE...] [--all] [--tools A,B] [-y]", "give crewmates a server from mcp.json (edits their files)"),
+        ("crewctl mcp remove", "SERVER [CREWMATE...] [--all] [-y]", "take a server away from crewmates"),
         ("crewctl mcp tools", "NAME [--timeout N] [-y]", "connect to one server from mcp.json and list its tool names"),
         ("crewctl crew-servers", "", "check why Crew's own tool servers are missing"),
     ]),

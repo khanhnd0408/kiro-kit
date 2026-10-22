@@ -932,6 +932,115 @@ def _workspace_restore(ctx, args, out):
     return 1 if failed else 0
 
 
+def _mcp_entries(current):
+    """The mcp_json_servers value of an agent file as {name: [tools]} (a list means every tool of each server)."""
+    if isinstance(current, list):
+        return {n: [] for n in current if isinstance(n, str)}
+    if isinstance(current, dict):
+        return {n: list(o.get("tools", [])) if isinstance(o, dict) else [] for n, o in current.items()}
+    return {}
+
+
+def _mcp_value(entries):
+    """Write {name: [tools]} back in the shortest form: a plain list when no server limits its tools."""
+    if not entries:
+        return None
+    if all(not tools for tools in entries.values()):
+        return list(entries)
+    return {n: ({"tools": t} if t else {}) for n, t in entries.items()}
+
+
+def _edit_agent_file(path, mutate):
+    """Load a *.agent.json, let `mutate(data)` change it, and return the new text (same field order, 2-space indent)."""
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    data = json.loads(text)
+    mutate(data)
+    return json.dumps(data, indent=2 if "\n" in text.strip() else None, ensure_ascii=False) + "\n"
+
+
+def _mcp_change(args, out, ctx, servers, removing):
+    """Add a server from mcp.json to (or remove it from) one or more crewmates' config files."""
+    import time
+    from . import mcpjson
+    from .state import backup_file
+    from .util import atomic_write
+    by_name = {s.name: s for s in ctx.specs}
+    names = [s.name for s in ctx.specs] if args.all else list(dict.fromkeys(args.crewmates))
+    if not names:
+        print(out.red("name the crewmates (crewctl mcp add SERVER CREWMATE [CREWMATE ...]) or use --all"))
+        return 1
+    unknown = [n for n in names if n not in by_name]
+    if unknown:
+        print(out.red(f"unknown crewmate(s): {', '.join(unknown)}. In the config: {', '.join(by_name) or 'none'}"))
+        return 1
+    tools = [t.strip() for t in (args.tools or "").split(",") if t.strip()]
+    if any(not mcpjson.TOOL_RE.match(t) for t in tools):
+        print(out.red("--tools takes tool names separated by commas (letters, digits, '_', '.', '-')."))
+        return 1
+    if not removing:
+        definition = servers[args.server]
+        if definition.get("disabled") is True:
+            print(out.red(f"'{args.server}' is disabled in {_tilde(ctx.settings.mcp_json)}; enable it there first."))
+            return 1
+    plan = []
+    for name in names:
+        spec = by_name[name]
+        entries = _mcp_entries(json.load(open(spec.source_file, encoding="utf-8")).get("mcp_json_servers"))
+        before = dict(entries)
+        if removing:
+            entries.pop(args.server, None)
+        elif args.server not in entries or tools:
+            entries[args.server] = sorted(set(entries.get(args.server, [])) | set(tools)) if tools else (entries.get(args.server) or [])
+        if entries != before:
+            plan.append((name, before, entries))
+    print(f"{'Removing' if removing else 'Adding'} '{args.server}' {'from' if removing else 'to'} {len(names)} crewmate(s):")
+    for name in names:
+        change = next((c for c in plan if c[0] == name), None)
+        if change is None:
+            print(f"  {name:<28}{'not using it' if removing else 'already has it' + (' (with these tools)' if tools else '')}")
+        else:
+            shown = change[2].get(args.server)
+            print(f"  {name:<28}" + ("removed" if removing else "tools: " + (", ".join(shown) if shown else "all of its tools")))
+    if not plan:
+        print(out.green("Nothing to change."))
+        return 0
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(out.red("Refusing to ask a question without a terminal. Use --yes."))
+            return 1
+        if input(f"Change {len(plan)} config file(s)? Type 'yes' to continue: ").strip() != "yes":
+            print("Cancelled.")
+            return 1
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backups = {}
+    for name, _, entries in plan:
+        spec = by_name[name]
+
+        def mutate(data, entries=entries):
+            value = _mcp_value(entries)
+            if value is None:
+                data.pop("mcp_json_servers", None)
+            else:
+                data["mcp_json_servers"] = value
+        new_text = _edit_agent_file(spec.source_file, mutate)
+        backups[name] = backup_file(ctx.config_dir, stamp, spec.source_file, os.path.basename(spec.source_file))
+        atomic_write(spec.source_file, new_text.encode("utf-8"), mode=0o644)
+    fresh = build_context(ctx.config_dir, _overrides(args), check_workspaces=False)
+    bad = [p for p in fresh.problems if p.level == "error"]
+    if bad:                                       # never leave a config that no longer validates
+        for name, backup in backups.items():
+            shutil.copyfile(backup, by_name[name].source_file)
+        print(out.red("The change makes the config invalid, so it was undone:"))
+        for problem in bad:
+            print(out.red(f"  {problem.where}: {problem.message}"))
+        return 1
+    print(out.green(f"Updated {len(plan)} file(s).") + f" Old versions: {_tilde(os.path.join(ctx.config_dir, '.crewctl', 'backups', stamp))}")
+    print(out.dim("Next: `crewctl plan` to see the agent-file change, `crewctl apply`, then start a new chat with each crewmate. "
+                  "`register` is not needed: MCP servers are part of the agent file, not of Crew's record."))
+    return 0
+
+
 def cmd_mcp(args):
     """List the MCP servers in mcp.json, or connect to one and list its tools."""
     from . import mcpjson
@@ -945,6 +1054,14 @@ def cmd_mcp(args):
         print(out.red(error))
         print("Set \"mcp_json\" in crewctl.json or CREWCTL_MCP_JSON if the file is elsewhere.")
         return 1
+    if args.mcp_action in ("add", "remove"):
+        if args.mcp_action == "add" and args.server not in servers:
+            print(out.red(f"'{args.server}' is not in {settings.mcp_json}. It has: {', '.join(sorted(servers)) or 'no servers'}."))
+            return 1
+        ctx = _load(args, out, need_state=False, check_workspaces=False)
+        if ctx is None:
+            return 1
+        return _mcp_change(args, out, ctx, servers, removing=args.mcp_action == "remove")
     if args.mcp_action == "list":
         used = {}
         if os.path.isdir(config):
@@ -1230,6 +1347,17 @@ def build_parser():
     p = sub.add_parser("mcp", help="list the MCP servers in mcp.json, or connect to one and list its tools")
     msub = p.add_subparsers(dest="mcp_action", required=True)
     msub.add_parser("list", help="the servers in mcp.json (default ~/.kiro/settings/mcp.json) and which crewmates use them")
+    for action, text in (("add", "add a server from mcp.json to one or more crewmates' config files"),
+                         ("remove", "remove a server from one or more crewmates' config files")):
+        q = msub.add_parser(action, help=text)
+        q.add_argument("server", metavar="SERVER", help="the server name in mcp.json")
+        q.add_argument("crewmates", nargs="*", metavar="CREWMATE", help="one or more crewmates (names in the config)")
+        q.add_argument("--all", action="store_true", help="every crewmate in the config")
+        if action == "add":
+            q.add_argument("--tools", metavar="A,B", help="limit the server to these tools (default: all of its tools)")
+        else:
+            q.set_defaults(tools="")
+        q.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
     q = msub.add_parser("tools", help="start or call one server, as Kiro would, and list its tool names")
     q.add_argument("name", help="the server name in mcp.json")
     q.add_argument("--timeout", type=int, default=20, help="seconds to wait for the server (default 20)")

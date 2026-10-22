@@ -113,7 +113,7 @@ Only `name`, `tools` and a prompt are required. Start from `templates/agent.temp
 | `prompt`, `prompt_file` or `prompt_files` | agent file | Exactly one. `prompt_files` is a list of files joined in order with a blank line between them, so shared blocks (working rules, language rules) live in one place. Files must be inside the config folder. |
 | `tools` | agent file | Required. There is no default; `[]` means none. |
 | `allowed_tools`, `mcp_servers`, `include_mcp_json`, `resources`, `permissions`, `hooks` | agent file | Optional. Details in [docs/tools-skills-mcp.md](docs/tools-skills-mcp.md). |
-| `mcp_json_servers` | agent file | Names of servers already in your `~/.kiro/settings/mcp.json` (list, or `{name: {"tools": [...]}}`). Nothing is copied from that file. `crewctl mcp list` shows them; `crewctl mcp tools NAME` connects to one and prints its tool names. |
+| `mcp_json_servers` | agent file | Names of servers already in your `~/.kiro/settings/mcp.json` (list, or `{name: {"tools": [...]}}`). Nothing is copied from that file. `crewctl mcp list` shows them; `crewctl mcp tools NAME` connects to one and prints its tool names; `crewctl mcp add SERVER CREWMATE...` (or `--all`, `--tools a,b`) and `crewctl mcp remove` edit this field in many files at once. |
 | `skills` | agent file (`resources`) | Optional. Paths to `SKILL.md` files; each becomes a `skill://` entry. |
 | `crew_servers` | agent file | Optional. `["core"]` lets a crewmate spawn others and use Crew memory; `["cron"]` adds schedules. crewctl finds the command on the machine it runs on. |
 | `extra_agent_fields` | agent file | Any other key you want copied through. |
