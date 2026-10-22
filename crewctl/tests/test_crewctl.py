@@ -1532,6 +1532,217 @@ class AdoptAgentFiles(unittest.TestCase):
         self.assertIn("crewctl import a", text)
 
 
+FAKE_MCP_SERVER = """
+import json, os, sys
+print("starting up (a log line, not JSON-RPC)", flush=True)
+mode = os.environ.get("FAKE_MODE", "ok")
+if mode == "exit":
+    sys.stderr.write("boom: missing API key " + os.environ.get("SECRET_VALUE", "")); sys.exit(3)
+tools = [{"name": "alpha", "description": "First   tool\\nwith  spaces"}, {"name": "beta", "description": "Second tool"}, {"name": "gamma"}]
+for line in sys.stdin:
+    message = json.loads(line)
+    method, ident = message.get("method"), message.get("id")
+    if method == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": ident, "result": {"protocolVersion": "2025-03-26", "capabilities": {"tools": {}},
+                                                                    "serverInfo": {"name": "fake", "version": "1"}}}), flush=True)
+    elif method == "tools/list":
+        cursor = (message.get("params") or {}).get("cursor")
+        if mode == "hang":
+            continue
+        page = tools[:2] if not cursor else tools[2:]
+        result = {"tools": page}
+        if not cursor:
+            result["nextCursor"] = "page2"
+        print(json.dumps({"jsonrpc": "2.0", "id": ident, "result": result}), flush=True)
+"""
+
+
+class McpCommands(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.server = os.path.join(self.tmp, "fake_server.py")
+        open(self.server, "w").write(FAKE_MCP_SERVER)
+        self.mcp = os.path.join(self.tmp, "mcp.json")
+        self.write_mcp({"fake": {"command": sys.executable, "args": [self.server], "env": {"SECRET_VALUE": "hunter2hunter2"}},
+                        "off": {"command": sys.executable, "args": [self.server], "disabled": True},
+                        "remote": {"url": "http://127.0.0.1:1/mcp", "headers": {"Authorization": "Bearer ${TOKEN_FOR_TEST}"}}})
+        self.config = os.path.join(self.tmp, "crew")
+        os.makedirs(self.config)
+        self.agents = os.path.join(self.tmp, "agents")
+        os.makedirs(self.agents)
+        patch = mock.patch.dict(os.environ, {"CREWCTL_MCP_JSON": self.mcp, "CREWCTL_DIR": self.config}, clear=False)
+        patch.start()
+        self.addCleanup(patch.stop)
+        os.environ.pop("TOKEN_FOR_TEST", None)
+
+    def write_mcp(self, servers):
+        json.dump({"mcpServers": servers}, open(self.mcp, "w"))
+
+    def agent(self, **fields):
+        data = {"name": "a", "prompt": "p", "tools": ["fs_read"], "description": "d", "triggers": "t"}
+        data.update(fields)
+        json.dump(data, open(os.path.join(self.config, "a.agent.json"), "w"))
+
+    def run_cli(self, *argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            code = cli.main(["--no-color", "--agents-dir", self.agents, "--crew-home", self.tmp, *argv])
+        return code, buffer.getvalue()
+
+    # ---- the agent field
+    def test_agent_names_a_server_from_mcp_json_and_nothing_is_copied(self):
+        self.agent(mcp_json_servers=["fake"])
+        code, text = self.run_cli("apply", "-y")
+        self.assertEqual(code, 0, text)
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertTrue(written["includeMcpJson"])
+        self.assertIn("@fake", written["tools"])
+        self.assertNotIn("fake", written["mcpServers"])                    # no definition, no env, no secret copied
+        self.assertNotIn("hunter2hunter2", json.dumps(written))
+
+    def test_only_some_tools_of_a_server(self):
+        self.agent(mcp_json_servers={"fake": {"tools": ["alpha", "beta"]}})
+        self.run_cli("apply", "-y")
+        written = json.load(open(os.path.join(self.agents, "a.json")))
+        self.assertIn("@fake/alpha", written["tools"])
+        self.assertIn("@fake/beta", written["tools"])
+        self.assertNotIn("@fake", written["tools"])
+
+    def test_defaults_file_with_include_mcp_json_false_does_not_block_it(self):
+        json.dump({"include_mcp_json": False}, open(os.path.join(self.config, "_defaults.json"), "w"))
+        self.agent(mcp_json_servers=["fake"])
+        code, text = self.run_cli("validate")
+        self.assertEqual(code, 0, text)
+
+    def test_agent_field_errors(self):
+        cases = ((["nope"], "'nope' is not in"), (["off"], "is disabled in"), ("fake", "must be a list of server names"),
+                 ({"fake": {"tools": "alpha"}}, "must be {}"), ({"fake": {"tools": ["a b"]}}, "must be {}"),
+                 ({"fake": {"surprise": 1}}, "must be {}"), (["bad name"], "not a valid server name"))
+        for value, message in cases:
+            self.agent(mcp_json_servers=value)
+            code, text = self.run_cli("validate")
+            self.assertEqual(code, 1, value)
+            self.assertIn(message, text, value)
+        self.agent(mcp_json_servers=["fake"], include_mcp_json=False)
+        self.assertIn("needs include_mcp_json to be true", self.run_cli("validate")[1])
+        self.agent(mcp_json_servers=["fake"], mcp_servers={"fake": {"command": "x"}})
+        self.assertIn("in both mcp_servers and mcp_json_servers", self.run_cli("validate")[1])
+
+    def test_missing_mcp_file_is_an_error_that_says_where_to_set_it(self):
+        os.remove(self.mcp)
+        self.agent(mcp_json_servers=["fake"])
+        code, text = self.run_cli("validate")
+        self.assertEqual(code, 1)
+        self.assertIn("no MCP file at", text)
+        self.assertIn("CREWCTL_MCP_JSON", text)
+
+    def test_mcp_json_setting_in_crewctl_json(self):
+        elsewhere = os.path.join(self.tmp, "other-mcp.json")
+        json.dump({"mcpServers": {"only-here": {"command": "x"}}}, open(elsewhere, "w"))
+        json.dump({"mcp_json": elsewhere}, open(os.path.join(self.config, "crewctl.json"), "w"))
+        with mock.patch.dict(os.environ, {"CREWCTL_MCP_JSON": ""}):
+            self.agent(mcp_json_servers=["only-here"])
+            code, text = self.run_cli("validate")
+        self.assertEqual(code, 0, text)
+
+    # ---- crewctl mcp list / tools
+    def test_list_shows_servers_state_and_who_uses_them_without_secrets(self):
+        self.agent(mcp_json_servers=["fake"])
+        code, text = self.run_cli("mcp", "list")
+        self.assertEqual(code, 0, text)
+        self.assertRegex(text, r"fake\s+command\s+enabled\s+a")
+        self.assertRegex(text, r"off\s+command\s+disabled")
+        self.assertRegex(text, r"remote\s+url\s+enabled")
+        self.assertNotIn("hunter2hunter2", text)
+        self.assertNotIn("TOKEN_FOR_TEST", text)
+
+    def test_tools_lists_every_tool_across_pages_over_stdio(self):
+        code, text = self.run_cli("mcp", "tools", "fake", "-y")
+        self.assertEqual(code, 0, text)
+        self.assertIn("fake: 3 tool(s)", text)
+        for name in ("alpha", "beta", "gamma"):
+            self.assertIn(name, text)
+        self.assertIn("First tool with spaces", text)                       # whitespace in descriptions is collapsed
+        self.assertIn('"tools": ["alpha"]', text)
+
+    def test_tools_asks_before_starting_a_server_and_never_prints_environment_values(self):
+        code, text = self.run_cli("mcp", "tools", "fake")                   # no terminal, no --yes
+        self.assertEqual(code, 1)
+        self.assertIn("Will start fake:", text)
+        self.assertIn("Use --yes", text)
+        self.assertNotIn("hunter2hunter2", text)
+        with mock.patch.dict(os.environ, {"FAKE_MODE": "exit"}):
+            code, text = self.run_cli("mcp", "tools", "fake", "-y")
+        self.assertEqual(code, 1)
+        self.assertIn("Cannot get the tool list", text)
+        self.assertIn("boom: missing API key", text)
+        self.assertNotIn("hunter2hunter2", text)                            # the server echoed its secret on stderr: redacted
+
+    def test_tools_errors(self):
+        code, text = self.run_cli("mcp", "tools", "nope", "-y")
+        self.assertEqual((code, "'nope' is not in" in text), (1, True))
+        with mock.patch.dict(os.environ, {"FAKE_MODE": "hang"}):
+            code, text = self.run_cli("mcp", "tools", "fake", "-y", "--timeout", "2")
+        self.assertEqual(code, 1)
+        self.assertIn("did not answer in time", text)
+        code, text = self.run_cli("mcp", "tools", "remote", "-y")           # ${TOKEN_FOR_TEST} is not set
+        self.assertEqual(code, 1)
+        self.assertIn("TOKEN_FOR_TEST", text)
+        self.assertIn("not set in this terminal", text)
+        code, text = self.run_cli("mcp", "tools", "off", "-y")
+        self.assertEqual(code, 0)
+        self.assertIn("is disabled in mcp.json", text)
+
+    def test_tools_over_http_json_and_event_stream(self):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            sse = False
+            seen = []
+
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                Handler.seen.append((body.get("method"), self.headers.get("Authorization"), self.headers.get("Mcp-Session-Id")))
+                if "id" not in body:
+                    self.send_response(202)
+                    self.end_headers()
+                    return
+                result = {"protocolVersion": "2025-03-26"} if body["method"] == "initialize" else {"tools": [{"name": "http_tool", "description": "over http"}]}
+                payload = json.dumps({"jsonrpc": "2.0", "id": body["id"], "result": result})
+                self.send_response(200)
+                self.send_header("Mcp-Session-Id", "sess-1")
+                if Handler.sse:
+                    data = f"event: message\ndata: {payload}\n\n".encode()
+                    self.send_header("Content-Type", "text/event-stream")
+                else:
+                    data = payload.encode()
+                    self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        self.write_mcp({"remote": {"url": f"http://127.0.0.1:{httpd.server_address[1]}/mcp", "headers": {"Authorization": "Bearer ${TOKEN_FOR_TEST}"}}})
+        with mock.patch.dict(os.environ, {"TOKEN_FOR_TEST": "tok-123456"}):
+            for sse in (False, True):
+                Handler.sse, Handler.seen = sse, []
+                code, text = self.run_cli("mcp", "tools", "remote", "-y")
+                self.assertEqual(code, 0, text)
+                self.assertIn("http_tool", text)
+                self.assertNotIn("tok-123456", text)
+                self.assertEqual([m for m, _, _ in Handler.seen], ["initialize", "notifications/initialized", "tools/list"])
+                self.assertTrue(all(a == "Bearer tok-123456" for _, a, _ in Handler.seen))
+                self.assertEqual(Handler.seen[-1][2], "sess-1")             # the session id from initialize is sent back
+
+
 class Packaging(unittest.TestCase):
     def test_pyproject_exposes_a_crewctl_command_that_exists(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

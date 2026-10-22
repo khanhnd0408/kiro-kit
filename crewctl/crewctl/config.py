@@ -30,7 +30,7 @@ MEMBER_NAME_MAX = 500
 PROMPT_FILE_MAX_BYTES = 200_000
 
 AGENT_KEYS = ("name", "kiro_agent", "display_name", "description", "triggers", "model", "paid_model", "reasoning_effort",
-              "prompt", "prompt_file", "prompt_files", "tools", "allowed_tools", "mcp_servers", "include_mcp_json", "resources",
+              "prompt", "prompt_file", "prompt_files", "tools", "allowed_tools", "mcp_servers", "include_mcp_json", "mcp_json_servers", "resources",
               "permissions", "hooks", "skills", "crew_servers", "extra_agent_fields", "workspace", "workspace_dir",
               "session_color", "starred")
 # Keys written by crewctl itself; extra_agent_fields may not override them.
@@ -41,7 +41,7 @@ MANAGED_KIRO_KEYS = frozenset({"name", "description", "model", "prompt", "tools"
 CREW_SERVERS = {"core": "kirocrew-core", "cron": "kirocrew-cron"}
 CREW_SERVER_OPTIONS = ("disabledTools", "tools")
 TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,60}\Z")
-SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir", "crew_server_commands", "use_crew_servers")
+SETTINGS_KEYS = ("plan", "agents_dir", "crew_home", "kirocrew_bin", "allow_unknown_models", "skills_dir", "project_skills_dir", "crew_server_commands", "use_crew_servers", "mcp_json")
 
 SECRET_PATTERNS = [
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
@@ -75,6 +75,7 @@ class Settings:
     allow_unknown_models: bool = False
     skills_dir: str = ""            # where destination "crew" skills go; default <crew_home>/skills
     project_skills_dir: str = ""    # where destination "project" skills go; relative paths start at the config folder
+    mcp_json: str = ""              # the MCP server list agents may name in mcp_json_servers; default ~/.kiro/settings/mcp.json
     use_crew_servers: bool = True   # false: leave out Crew's own tool servers (and the @kirocrew-* tool names) from every agent file
     crew_server_commands: dict = field(default_factory=dict)   # {"core": {"command": ..., "args": [...]}}: used when kirocrew.json has none
 
@@ -95,6 +96,7 @@ class AgentSpec:
     allowed_tools: list = field(default_factory=list)
     mcp_servers: dict = field(default_factory=dict)
     include_mcp_json: bool = False
+    mcp_json_servers: dict = field(default_factory=dict)   # server name in mcp.json -> its tool names ([] = all of its tools)
     resources: list = field(default_factory=list)
     permissions: dict = field(default_factory=dict)
     hooks: object = field(default_factory=dict)
@@ -188,6 +190,8 @@ def load_settings(config_dir, problems, overrides=None):
         problems.append(Problem("error", "crewctl.json", f"plan must be \"free\" or \"paid\", not {settings.plan!r}"))
         settings.plan = "free"
     settings.crew_server_commands = _check_server_commands(settings.crew_server_commands, problems)
+    from . import mcpjson
+    settings.mcp_json = os.path.abspath(os.path.expanduser(settings.mcp_json or mcpjson.default_path()))
     if not isinstance(settings.use_crew_servers, bool):
         problems.append(Problem("error", "crewctl.json", "use_crew_servers must be true or false"))
         settings.use_crew_servers = True
@@ -287,6 +291,59 @@ def _find_secrets(value, path=""):
         for index, item in enumerate(value):
             hits.extend(_find_secrets(item, f"{path}[{index}]"))
     return hits
+
+
+def _add_mcp_json_servers(spec, data, own_file, settings, where, problems):
+    """mcp_json_servers: ["fetch"] or {"fetch": {"tools": ["fetch"]}}. Names servers from the user's mcp.json; copies nothing."""
+    from . import mcpjson
+    raw = data["mcp_json_servers"]
+    if isinstance(raw, list) and all(isinstance(n, str) for n in raw):
+        raw = {n: {} for n in raw}
+    if not isinstance(raw, dict) or not raw:
+        problems.append(Problem("error", where, "mcp_json_servers must be a list of server names, or an object like "
+                                                "{\"fetch\": {\"tools\": [\"fetch\"]}}"))
+        return
+    servers, error = mcpjson.load(settings.mcp_json)
+    if error:
+        problems.append(Problem("error", where, f"mcp_json_servers needs the MCP file: {error}. Set \"mcp_json\" in crewctl.json "
+                                                "or CREWCTL_MCP_JSON if it lives elsewhere."))
+        return
+    if own_file.get("include_mcp_json") is False:          # only an explicit false in the agent's own file; _defaults.json is overridden
+        problems.append(Problem("error", where, "mcp_json_servers needs include_mcp_json to be true (it is how Kiro loads the "
+                                                "server); remove include_mcp_json: false"))
+        return
+    chosen = {}
+    for name, options in raw.items():
+        if not isinstance(name, str) or not mcpjson.NAME_RE.match(name):
+            problems.append(Problem("error", where, f"mcp_json_servers: '{name}' is not a valid server name"))
+            continue
+        if name not in servers:
+            problems.append(Problem("error", where, f"mcp_json_servers: '{name}' is not in {settings.mcp_json}. "
+                                                    f"It has: {', '.join(sorted(servers)) or 'no servers'}."))
+            continue
+        if servers[name].get("disabled") is True:
+            problems.append(Problem("error", where, f"mcp_json_servers: '{name}' is disabled in {settings.mcp_json}; "
+                                                    "enable it there first (Kiro does not load a disabled server)."))
+            continue
+        if name in (data.get("mcp_servers") or {}):
+            problems.append(Problem("error", where, f"'{name}' is in both mcp_servers and mcp_json_servers; use one"))
+            continue
+        tools = options.get("tools", []) if isinstance(options, dict) else None
+        if tools is None or not _is_str_list(tools) or any(not mcpjson.TOOL_RE.match(t) for t in tools) or \
+                (isinstance(options, dict) and set(options) - {"tools"}):
+            problems.append(Problem("error", where, f"mcp_json_servers.{name} must be {{}} or {{\"tools\": [\"tool_name\", ...]}}"))
+            continue
+        chosen[name] = list(tools)
+    if not chosen:
+        return
+    spec.mcp_json_servers = chosen
+    spec.include_mcp_json = True
+    if "*" not in spec.tools:
+        for name, tools in chosen.items():
+            wanted = [f"@{name}/{t}" for t in tools] if tools else [f"@{name}"]
+            spec.tools = [*spec.tools, *[w for w in wanted if w not in spec.tools]]
+    problems.append(Problem("info", where, f"mcp_json_servers: this crewmate loads the servers in {settings.mcp_json} "
+                                           f"(include_mcp_json); only {', '.join(sorted(chosen))} is exposed through its tools list."))
 
 
 def _check_mcp(servers, where, problems):
@@ -484,6 +541,8 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
         else:
             problems.append(Problem("error", where, "skills must be a list of paths or skill:// URIs, "
                                                     "for example [\".kiro/skills/log-triage/SKILL.md\"]"))
+    if "mcp_json_servers" in data:
+        _add_mcp_json_servers(spec, data, raw, settings, where, problems)
     wanted = data.get("crew_servers")
     if wanted and settings.use_crew_servers:
         _add_crew_servers(spec, wanted, where, problems, crew_lookup)

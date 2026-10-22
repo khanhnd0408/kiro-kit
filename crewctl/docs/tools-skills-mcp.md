@@ -10,7 +10,7 @@ Checked on 2026-10-16 against Kiro's docs and the Crew code installed on one mac
 |---|---|---|
 | Limit what the agent can do | `tools` (required) | `["fs_read", "grep", "glob"]` |
 | Let some tools run without asking | `allowed_tools` | `["fs_read"]` |
-| Give it an MCP server (an outside tool) | `mcp_servers` | see section 3 |
+| Give it an MCP server (an outside tool) | `mcp_servers`, or `mcp_json_servers` for one already in `~/.kiro/settings/mcp.json` | see section 3 |
 | Let it delegate to other crewmates, remember things, schedule | `crew_servers` | `["core", "cron"]` |
 | Give it a skill (a written procedure) | `skills` | `[".kiro/skills/log-triage/SKILL.md"]` |
 | Fine-grained shell and file rules | `permissions` | see section 1 |
@@ -121,6 +121,26 @@ Add servers to one agent in `mcp_servers`, then name them in `tools`:
 - A server is either local (`command`, `args`, `env`) or remote (`url`, `headers`). Exactly one of `command` or `url`.
 - **Never write a token into the file.** Use `${NAME}` and set the variable in the environment of the machine. crewctl rejects text that looks like a real credential. Kiro only expands variables you have approved in its "Mcp Approved Env Vars" setting.
 - `disabledTools` hides tools you don't want this agent to see, and is the safest way to make a powerful server read-only. `autoApprove` and `timeout` also pass through.
+### Using a server that is already in `mcp.json`: `mcp_json_servers`
+
+If the server is configured in your own `~/.kiro/settings/mcp.json` (the file Kiro's MCP settings edit), name it instead of repeating its definition:
+
+```json
+"mcp_json_servers": ["fetch"]
+```
+or only some of its tools:
+```json
+"mcp_json_servers": { "victorialogs": { "tools": ["query", "hits"] } }
+```
+crewctl checks that each name exists in the file and is not `disabled`, sets `includeMcpJson` to true, and adds `@fetch` (or `@victorialogs/query`, ...) to the agent's `tools`. **It copies nothing:** the command, URL, environment and tokens stay in `mcp.json`, and Kiro reads them from there when the agent starts. Two things to know: `includeMcpJson` makes Kiro load every server in that file for this agent, but the agent can only use the tools its `tools` list names; and a tool you want to run without asking must also be listed in `allowed_tools`.
+
+Two commands help you choose:
+```bash
+crewctl mcp list                 # the servers in mcp.json (kind, enabled or disabled) and which crewmates use them
+crewctl mcp tools victorialogs   # starts or calls that one server, as Kiro would, and prints its tool names
+```
+`mcp tools` shows the exact command it is about to run and asks first (or `-y`). It prints no environment values, and it stops the server again as soon as it has the tool list. Use a different file with `"mcp_json"` in `crewctl.json` or `CREWCTL_MCP_JSON`. Only the global file is read, not a workspace `.kiro/settings/mcp.json`.
+
 - `"include_mcp_json": true` also loads every server from your global `~/.kiro/settings/mcp.json` and workspace `.kiro/settings/mcp.json`. The default is `false`, so the agent only gets what you list. Leave it off unless you want that.
 - If a server of the same name is defined in several places, the agent file wins.
 - The examples above use made-up server names. Use the real command for your servers.

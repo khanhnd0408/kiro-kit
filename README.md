@@ -46,7 +46,7 @@ crewctl review check /path/to/your/project      # re-check every file:line citat
 ## All commands
 
 ```
-Crew:    init  validate  plan  apply  destroy  status  register  skills  lint-skills  models  workspace  crew-servers  import  state
+Crew:    init  validate  plan  apply  destroy  status  register  skills  lint-skills  models  workspace  mcp  crew-servers  import  state
 Review:  review install  |  review check  |  review where
 ```
 

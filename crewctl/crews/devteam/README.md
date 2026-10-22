@@ -97,6 +97,15 @@ There is one orchestrator, on purpose: with several specialists, one crewmate ha
 
 `collect_evidence.py` reads three environment variables: `VICTORIALOGS_URL`, `VICTORIAMETRICS_URL`, `TEMPO_URL` (for example `http://victorialogs:9428`), and optional `VICTORIALOGS_TOKEN`, `VICTORIAMETRICS_TOKEN`, `TEMPO_TOKEN`. Export them in the environment Crew runs the agent from. Do not put tokens in any config file. The script prints only summaries (signature counts, min/max per series, span lists) and masks credential-looking text.
 
+## Using MCP servers from your `mcp.json` (for example for the inspector)
+
+`inspector-agent` reads logs, metrics and traces with `collect_evidence.py`. If you already run MCP servers for them and have them in `~/.kiro/settings/mcp.json`, you can give the inspector those instead, without copying any definition or token:
+```bash
+crewctl mcp list                       # find the server names
+crewctl mcp tools victorialogs         # see the tool names (asks before starting the server)
+```
+then add `"mcp_json_servers": { "victorialogs": {"tools": ["query"]}, "victoriametrics": {}, "tempo": {} }` (your server names) to `inspector-agent.agent.json`, run `crewctl apply`, and start a new chat. The same field works for any crewmate.
+
 ## What is not verified
 
 - No model was called. I have not run any of the ten crewmates, so I do not know how well each prompt performs; expect to tune the prompts after a few real tasks.

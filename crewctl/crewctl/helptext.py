@@ -36,6 +36,8 @@ JOBS = [
         ("crewctl state", "list|show|rm|mv [NAME]", "look at or edit the state file"),
         ("crewctl skills", "new|plan|apply|destroy [NAME] [--show] [-y]", "build SKILL.md files from skills/*.skill.json"),
         ("crewctl lint-skills", "PATH...", "check SKILL.md files against Kiro's and Crew's rules"),
+        ("crewctl mcp list", "", "the MCP servers in mcp.json and which crewmates use them"),
+        ("crewctl mcp tools", "NAME [--timeout N] [-y]", "connect to one server from mcp.json and list its tool names"),
         ("crewctl crew-servers", "", "check why Crew's own tool servers are missing"),
     ]),
     ("JOB 2. Review a project's prompts and agents against the Codex / Claude Code patterns", [

@@ -932,6 +932,68 @@ def _workspace_restore(ctx, args, out):
     return 1 if failed else 0
 
 
+def cmd_mcp(args):
+    """List the MCP servers in mcp.json, or connect to one and list its tools."""
+    from . import mcpjson
+    out = _out(args)
+    config = _config_dir(args)
+    settings_problems = []
+    from .config import load_settings
+    settings = load_settings(config, settings_problems, _overrides(args))
+    servers, error = mcpjson.load(settings.mcp_json)
+    if error:
+        print(out.red(error))
+        print("Set \"mcp_json\" in crewctl.json or CREWCTL_MCP_JSON if the file is elsewhere.")
+        return 1
+    if args.mcp_action == "list":
+        used = {}
+        if os.path.isdir(config):
+            ctx = build_context(config, _overrides(args), check_workspaces=False)
+            for spec in ctx.specs:
+                for name in spec.mcp_json_servers:
+                    used.setdefault(name, []).append(spec.name)
+        print(f"MCP servers in {_tilde(settings.mcp_json)}:")
+        print(f"  {'SERVER':<42}{'KIND':<9}{'STATE':<10}USED BY (this config)")
+        for name in sorted(servers):
+            definition = servers[name]
+            state = out.red("disabled") if definition.get("disabled") is True else "enabled"
+            print(f"  {out.bold(name):<{42 + (len(out.bold(name)) - len(name))}}{mcpjson.kind(definition):<9}"
+                  f"{state:<{10 + (len(state) - len('disabled' if definition.get('disabled') is True else 'enabled'))}}"
+                  f"{', '.join(used.get(name, [])) or '-'}")
+        print(out.dim("\nAdd a server to a crewmate with  \"mcp_json_servers\": [\"NAME\"]  in its *.agent.json; "
+                      "`crewctl mcp tools NAME` shows the tool names you can limit it to."))
+        return 0
+    name = args.name
+    if name not in servers:
+        print(out.red(f"'{name}' is not in {settings.mcp_json}. It has: {', '.join(sorted(servers)) or 'no servers'}."))
+        return 1
+    definition = servers[name]
+    if definition.get("disabled") is True:
+        print(out.yellow(f"'{name}' is disabled in mcp.json; Kiro would not load it. Connecting anyway to list its tools."))
+    if definition.get("url"):
+        print(f"Will connect to {name}: {definition['url']}")
+    else:
+        print(f"Will start {name}: {mcpjson.command_line(definition)}")
+        print(out.dim("  (the command from your mcp.json, with its environment; it is stopped again right after the tool list is read)"))
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(out.red("Refusing to ask a question without a terminal. Use --yes."))
+            return 1
+        if input("Continue? Type 'yes': ").strip() != "yes":
+            print("Cancelled.")
+            return 1
+    try:
+        tools = mcpjson.list_tools(definition, timeout=args.timeout)
+    except mcpjson.McpError as error:
+        print(out.red(mcpjson.redact(f"Cannot get the tool list from '{name}': {error}", definition)))
+        return 1
+    print(out.green(f"{name}: {len(tools)} tool(s)"))
+    for tool, description in tools:
+        print(f"  {out.bold(tool)}  {mcpjson.redact(description, definition)[:110]}")
+    print(out.dim(f"\nAll of them:  \"mcp_json_servers\": [\"{name}\"]      Only some:  \"mcp_json_servers\": {{\"{name}\": {{\"tools\": [\"{tools[0][0] if tools else 'tool'}\"]}}}}"))
+    return 0
+
+
 def cmd_plan(args):
     out = _out(args)
     ctx = _load(args, out)
@@ -1165,6 +1227,14 @@ def build_parser():
     p = sub.add_parser("lint-skills", help="check SKILL.md files (folder or file paths)")
     p.add_argument("paths", nargs="+")
     p.set_defaults(func=cmd_lint_skills)
+    p = sub.add_parser("mcp", help="list the MCP servers in mcp.json, or connect to one and list its tools")
+    msub = p.add_subparsers(dest="mcp_action", required=True)
+    msub.add_parser("list", help="the servers in mcp.json (default ~/.kiro/settings/mcp.json) and which crewmates use them")
+    q = msub.add_parser("tools", help="start or call one server, as Kiro would, and list its tool names")
+    q.add_argument("name", help="the server name in mcp.json")
+    q.add_argument("--timeout", type=int, default=20, help="seconds to wait for the server (default 20)")
+    q.add_argument("-y", "--yes", action="store_true", help="do not ask before starting the server")
+    p.set_defaults(func=cmd_mcp)
     p = sub.add_parser("workspace", help="list the workspaces, check the ones the crewmates use, create missing ones")
     wsub = p.add_subparsers(dest="workspace_action", required=True)
     wsub.add_parser("list", help="the workspaces Crew has, and which crewmates use them")
