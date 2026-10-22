@@ -236,6 +236,7 @@ cd kiro-kit && git pull
    crewctl skills apply      # installs new or changed skills, in ~/.kiro/crew/skills
    crewctl plan              # shows what changes in each agent file
    crewctl apply             # rewrites the agent files: prompts, language rules, tools
+   crewctl register          # dry run: prints the Crew commands. Look for MOVES / `--workspace` before going on
    crewctl register --run    # updates the Crew records: description, triggers, workspace
    ```
    `apply` stops if you edited a generated agent file by hand; read the message, and use `--force` only if you want the config to win (a backup is kept).
@@ -248,7 +249,7 @@ cd kiro-kit && git pull
    ```
 4. **Start a new chat** with each crewmate. A conversation that is already open keeps the prompt it started with.
 
-What the two latest updates change for you: every prompt now ends with the language rules (English inside, Vietnamese only for the final answer and the questions to you), and the orchestrator watches subagents with Crew's monitor loop instead of the `wait` tool. Its agent file loses the `wait` tool and gains `monitor_start`, `monitor_update`, `monitor_stop` and `monitor_inspect`, so `crewctl plan` will show that change.
+What the latest updates change for you: every prompt ends with the language rules (English inside, Vietnamese only for the final answer and the questions to you), and the orchestrator no longer polls by default. Crew wakes it when a run finishes; it arms the monitor loop (`monitor_start`, `monitor_update`, `autonudge_stop`, `monitor_inspect`) only for queued, awaiting-approval or long jobs, and it records runs with `session_ledger_record` / `session_ledger_read`. `crewctl plan` shows that tool change. See [../../docs/supervising-subagents.md](../../docs/supervising-subagents.md).
 
 ## Changing things later
 
