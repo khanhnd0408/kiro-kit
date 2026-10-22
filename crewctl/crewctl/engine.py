@@ -56,6 +56,7 @@ class RegAction:
     commands: list = field(default_factory=list)   # argv lists, without the kirocrew binary
     dashboard: dict = field(default_factory=dict)  # fields only the dashboard can set
     notes: list = field(default_factory=list)
+    moves: list = field(default_factory=list)      # (from, to) workspace, only when the file names a workspace
 
 
 @dataclass
@@ -236,29 +237,42 @@ def config_set_commands(name, wanted):
     return commands, {k: v for k, v in wanted.items() if k not in SETTABLE_BY_CONFIG}
 
 
+def effective_workspace(spec, view):
+    """The workspace a crewmate is really in: the file's line if it has one, else what Crew has (never a guess)."""
+    if spec.workspace_set:
+        return spec.workspace
+    record = view.agents.get(spec.name) if view.config_found else None
+    return (record or {}).get("workspace") or "default"
+
+
+def _create_argv(spec, ws_args):
+    return ["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent] + ws_args
+
+
 def plan_registration(ctx, specs, removed_names):
     """Work out what is left to do in Crew itself. Nothing here writes anything."""
     view = ctx.view
     actions = []
     for spec in specs:
         desired = to_registration(spec)
+        ws_args = ["--workspace", spec.workspace] if spec.workspace_set else []
+        record = view.agents.get(spec.name)
+        if not spec.workspace_set and record is not None:
+            desired["workspace"] = record.get("workspace") or "default"   # no line in the file: leave Crew's value alone
         dashboard_wanted = {k: desired[k] for k in ("display_name", "description", "triggers", "reasoning_effort",
                                                      "session_color") if desired[k]}
         if desired["starred"]:
             dashboard_wanted["starred"] = True
-        record = view.agents.get(spec.name)
         action = RegAction(name=spec.name, kind="in-sync")
         if not view.config_found:
             action.kind = "unknown"
             action.notes.append(f"could not read Crew's config ({view.error}); showing the commands for a fresh crewmate")
             set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
-            action.commands = [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
-                                                  "--workspace", spec.workspace]] + set_commands
+            action.commands = [_create_argv(spec, ws_args)] + set_commands
         elif record is None:
             action.kind = "register"
             set_commands, action.dashboard = config_set_commands(spec.name, dashboard_wanted)
-            action.commands = [["agent", "create", "--name", spec.name, "--kiro-agent", spec.kiro_agent,
-                                                  "--workspace", spec.workspace]] + set_commands
+            action.commands = [_create_argv(spec, ws_args)] + set_commands
         else:
             diffs = record_differences(desired, record)
             if record.get("model"):
@@ -267,6 +281,7 @@ def plan_registration(ctx, specs, removed_names):
             cli_diffs = [f for f in CLI_FIELDS if f in diffs]
             if "workspace" in diffs:
                 wanted_ws, actual_ws = diffs["workspace"]
+                action.moves.append((actual_ws, wanted_ws))
                 action.notes.append(f"MOVES this crewmate from workspace '{actual_ws}' to '{wanted_ws}' (the config says '{wanted_ws}'). "
                                     "If that is not what you want, fix the `workspace` line in its config file first "
                                     "(`crewctl workspace assign` or `crewctl workspace restore`).")

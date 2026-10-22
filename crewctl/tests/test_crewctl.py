@@ -650,7 +650,7 @@ class Registration(unittest.TestCase):
         env.agent("a", display_name="Agent A", triggers="when needed", reasoning_effort="high", starred=True)
         action = self.reg(env, "a")
         self.assertEqual(action.kind, "register")
-        self.assertEqual(action.commands[0], ["agent", "create", "--name", "a", "--kiro-agent", "a", "--workspace", "default"])
+        self.assertEqual(action.commands[0], ["agent", "create", "--name", "a", "--kiro-agent", "a"])   # no workspace line: Crew picks its default
         # the rest is written by Crew's own CLI, with every value JSON-encoded so text stays text
         self.assertIn(["config", "set", "agents.a.display_name", '"Agent A"'], action.commands)
         self.assertIn(["config", "set", "agents.a.triggers", '"when needed"'], action.commands)
@@ -687,6 +687,12 @@ class Registration(unittest.TestCase):
         self.assertEqual(action.commands[0][:2], ["agent", "create"])
         self.assertNotIn(["workspace", "create"], [c[:2] for c in action.commands])
         self.assertEqual(engine.workspace_problems(env.ctx().specs, env.ctx().view), [])
+
+    def test_create_command_names_the_workspace_only_when_the_file_does(self):
+        env = self.make(workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}})
+        env.agent("a", workspace="ops")
+        self.assertEqual(self.reg(env, "a").commands[0],
+                         ["agent", "create", "--name", "a", "--kiro-agent", "a", "--workspace", "ops"])
 
     def test_matching_record_is_in_sync(self):
         env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
@@ -2720,10 +2726,36 @@ class WorkspaceCommands(unittest.TestCase):
     def test_register_warns_when_it_would_move_a_crewmate_to_another_workspace(self):
         env = self.make(crew_agents={"default": {"kiro_agent": "kirocrew"},
                                      "a": {"kiro_agent": "a", "workspace": "ops", "description": "d", "triggers": "t"}})
-        env.agent("a")                                             # the config says default, Crew has ops
+        env.agent("a", workspace="default")                        # the file says default, Crew has ops
         code, text = env.run("register")
         self.assertIn("MOVES this crewmate from workspace 'ops' to 'default'", text)
         self.assertIn("crewctl workspace restore", text)
+
+    def test_a_file_without_a_workspace_line_never_moves_the_crewmate(self):
+        env = self.make(workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}},
+                        crew_agents={"default": {"kiro_agent": "kirocrew"},
+                                     "a": {"kiro_agent": "a", "workspace": "ops", "description": "d", "triggers": "t"}})
+        env.agent("a")                                             # no workspace line at all
+        code, text = env.run("register")
+        self.assertNotIn("MOVES", text)
+        self.assertNotIn("--workspace", text)
+        self.assertIn("Nothing to register", text)
+
+    def test_register_run_refuses_a_move_without_allow_move(self):
+        env = self.make(workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}},
+                        crew_agents={"default": {"kiro_agent": "kirocrew"},
+                                     "a": {"kiro_agent": "a", "workspace": "ops", "description": "d", "triggers": "t"}})
+        env.agent("a", workspace="default")
+        calls = []
+        with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
+            code, text = env.run("register", "--run", "--yes")
+            self.assertEqual(code, 1, text)
+            self.assertEqual(calls, [])
+            self.assertIn("--allow-move", text)
+            self.assertIn("a", text)
+            code, text = env.run("register", "--run", "--yes", "--allow-move")
+        self.assertEqual(code, 0, text)
+        self.assertIn("agent update a --workspace default", calls)
 
     def test_register_updates_every_crewmate_whose_record_differs_in_one_run(self):
         env = self.assign_world()
@@ -2731,7 +2763,7 @@ class WorkspaceCommands(unittest.TestCase):
             env.agent(name, workspace="ops", description="new")
         calls = []
         with mock.patch("crewctl.engine.run_commands", self.fake_run_commands(env, calls)):
-            code, text = env.run("register", "--run", "--yes")
+            code, text = env.run("register", "--run", "--yes", "--allow-move")
         self.assertEqual(code, 0, text)
         self.assertIn("agent update a --workspace ops", calls)
         self.assertIn("agent update b --workspace ops", calls)

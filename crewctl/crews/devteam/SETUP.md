@@ -236,9 +236,9 @@ cd kiro-kit && git pull
    crewctl skills apply      # installs new or changed skills, in ~/.kiro/crew/skills
    crewctl plan              # shows what changes in each agent file
    crewctl apply             # rewrites the agent files: prompts, language rules, tools
-   crewctl register          # dry run: prints the Crew commands. Look for MOVES / `--workspace` before going on
-   crewctl register --run    # updates the Crew records: description, triggers, workspace
+   crewctl register --run    # updates the Crew records: description, triggers
    ```
+   `register --run` never moves a crewmate to another workspace by itself. A file with no `workspace` line leaves Crew's value alone; a file whose `workspace` line differs from Crew's record makes it stop and list the moves, and only `--allow-move` lets it go on.
    `apply` stops if you edited a generated agent file by hand; read the message, and use `--force` only if you want the config to win (a backup is kept).
 3. **Check that the installed files are the new ones** (each of the first three commands must print nothing; the last prints at least one line):
    ```bash

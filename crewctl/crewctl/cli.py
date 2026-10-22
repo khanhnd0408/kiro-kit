@@ -11,7 +11,7 @@ import sys
 
 from . import __version__
 from . import models as model_catalog
-from .engine import (ApplyBlocked, Plan, apply_plan, build_context, build_plan, command_line, import_existing,
+from .engine import (ApplyBlocked, Plan, apply_plan, build_context, build_plan, command_line, effective_workspace, import_existing,
                      run_registration, state_move, state_remove, status_rows)
 from .helptext import ColorParser, render_overview, use_color
 from .state import StateError, state_path
@@ -680,7 +680,7 @@ def cmd_workspace(args):
         return 1
     users = {}
     for spec in ctx.specs:
-        users.setdefault(spec.workspace, []).append(spec.name)
+        users.setdefault(effective_workspace(spec, view), []).append(spec.name)
     if args.workspace_action == "list":
         print(f"{'WORKSPACE':<22}{'FOLDER (under ' + _tilde(ctx.settings.crew_home) + ')':<42}USED BY")
         names = sorted(set(view.workspaces) | set(users) | {view.default_workspace})
@@ -740,7 +740,7 @@ def _workspace_check(ctx, args, out, announce=True):
     view = ctx.view
     users = {}
     for spec in ctx.specs:
-        users.setdefault(spec.workspace, []).append(spec.name)
+        users.setdefault(effective_workspace(spec, view), []).append(spec.name)
     assume_yes = getattr(args, "yes", False)
     copy_default = getattr(args, "copy_from", None) or ""
     missing = ws.missing_workspaces(view, ctx.specs)
@@ -1276,6 +1276,14 @@ def cmd_register(args):
     if not args.run:
         render_registration(ctx, plan, out)
         return 0
+    moves = [(r.name, a, b) for r in todo for a, b in r.moves]
+    if moves and not args.allow_move:
+        print(out.red("Stopped: this would MOVE crewmates to another workspace in Crew (their file has a `workspace` line that differs from Crew's record):"))
+        for name, was, now in moves:
+            print(f"  {name:<28} {was} -> {now}")
+        print("If that is what you want, run again with --allow-move. If not, put the old value back in the file "
+              "(`crewctl workspace restore`), or delete the `workspace` line so crewctl leaves Crew's value alone.")
+        return 1
     code = _run_commands(ctx, todo, args, out)
     if code:
         return code
@@ -1444,6 +1452,7 @@ def build_parser():
     with_common(sub.add_parser("status", help="one line per crewmate")).set_defaults(func=cmd_status)
     p = with_common(sub.add_parser("register", help="show (or with --run, execute) the kirocrew commands"), yes=True)
     p.add_argument("--run", action="store_true", help="run the kirocrew commands instead of printing them")
+    p.add_argument("--allow-move", action="store_true", help="with --run: also move crewmates whose file names a different workspace than Crew has")
     p.set_defaults(func=cmd_register)
     p = with_common(sub.add_parser("import", help="adopt an agent file that already exists"), target=False)
     p.add_argument("name", help="the agent file to adopt (name of the crewmate)")

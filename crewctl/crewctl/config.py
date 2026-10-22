@@ -102,6 +102,7 @@ class AgentSpec:
     hooks: object = field(default_factory=dict)
     extra_agent_fields: dict = field(default_factory=dict)
     workspace: str = "default"
+    workspace_set: bool = False   # False: the file has no "workspace" line, so crewctl never moves the crewmate
     workspace_dir: str = ""
     session_color: str = ""
     starred: bool = False
@@ -572,6 +573,7 @@ def _build_spec(path, config_dir, raw, defaults, settings, local_models, problem
                 spec.extra_agent_fields = extra
 
     workspace = data.get("workspace", "default")
+    spec.workspace_set = "workspace" in data
     if isinstance(workspace, str) and workspace.strip():
         spec.workspace = workspace.strip()
         from .workspaces import NAME_RE as WORKSPACE_NAME_RE
