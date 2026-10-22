@@ -1111,6 +1111,39 @@ def cmd_mcp(args):
     return 0
 
 
+def cmd_guide(args):
+    """Build a command step by step, with the effect of every choice shown."""
+    from .guide import Guide
+    out = _out(args)
+
+    def run(argv):
+        try:
+            return main(argv)
+        except SystemExit as stop:
+            return stop.code if isinstance(stop.code, int) else 1
+    guide = Guide(build_parser(), _config_dir(args), _overrides(args), out.color, run_fn=run)
+    try:
+        return guide.run()
+    except KeyboardInterrupt:
+        print("\nLeft the guide.")
+        return 130
+
+
+def cmd_completion(args):
+    """Print a tab-completion script for the chosen shell."""
+    from .completion import SCRIPTS
+    sys.stdout.write(SCRIPTS[args.shell](build_parser()))
+    return 0
+
+
+def cmd_values(args):
+    """Names for tab completion (hidden command): one per line, nothing on any problem."""
+    from .guide import World
+    for name in World(_config_dir(args), _overrides(args)).values(args.kind):
+        print(name)
+    return 0
+
+
 def cmd_plan(args):
     out = _out(args)
     ctx = _load(args, out)
@@ -1310,6 +1343,13 @@ def build_parser():
     parser.epilog = "Run `crewctl` with no command for a short overview of what it can do."
     sub = parser.add_subparsers(dest="command", required=False)
     sub.add_parser("overview", help="what crewctl can do, in two groups").set_defaults(func=cmd_overview)
+    p = sub.add_parser("completion", help="print a tab-completion script for bash, zsh or fish")
+    p.add_argument("shell", choices=["bash", "zsh", "fish"])
+    p.set_defaults(func=cmd_completion)
+    p = sub.add_parser("values", help=argparse.SUPPRESS)
+    p.add_argument("kind", choices=["crewmates", "workspaces", "mcp", "skills", "teams"])
+    p.set_defaults(func=cmd_values)
+    sub.add_parser("guide", help="build a command step by step; every choice shows the command and what it does").set_defaults(func=cmd_guide)
     p = sub.add_parser("review", help="agent-review kit: install it into a project, or re-check citations")
     review = p.add_subparsers(dest="review_action", required=True)
     q = review.add_parser("install", help="install the review method into a project")

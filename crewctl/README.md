@@ -15,6 +15,17 @@ You write one small JSON file per crewmate. crewctl turns each one into the Kiro
 
 Python 3, standard library only. Tested on 3.12 and 3.13. The code parses as Python 3.8 but has not been run on it.
 
+**Not sure which command? Ask `crewctl guide`.** It builds a command with you, one choice at a time, and nothing runs until you say so:
+```bash
+crewctl guide
+```
+1. Describe what you want in a few words (for example `move crewmates to a workspace`) and it suggests the best matching commands, or press Enter to browse all of them. Every command is tagged `READ-ONLY`, `EDITS YOUR CONFIG FILES`, `WRITES AGENT FILES`, `WRITES SKILL FILES`, `CHANGES CREW`, `STARTS A PROGRAM` or `COPIES FILES INTO A PROJECT`.
+2. It asks for the required arguments, offering the names that exist in your config (crewmates, workspaces, servers in `mcp.json`) by number.
+3. Then it shows the options. Each time you pick one, it prints **the command so far**, **what the choice you just made does**, and **everything added so far**. Type a number again to change or remove an option, `?3` to read the full effect of option 3, `u` to undo, `g` for global options such as `--config-dir`, `p` to print the command and leave, `r` to run it (it asks `yes` first).
+The menu is built from the real command parser, so it always lists the options that exist, and a test checks that every command line it can build is accepted by crewctl.
+
+**Tab completion.** `crewctl completion bash|zsh|fish` prints a script that completes commands, subcommands and options, and your crewmate, workspace and server names (it asks `crewctl values ...`, so the names are always current). zsh and fish also show a one-line description next to each command and option; bash shows the names only. Use it with `source <(crewctl completion bash)` (or `zsh`), or `crewctl completion fish | source`; put the line in your shell profile to keep it. The bash script is tested; the zsh and fish scripts are generated the same way and checked for structure, but I could not run them where I built this, so tell me if one misbehaves.
+
 **Colors.** `crewctl` and every `--help` screen are colored when the output is a terminal: commands in bold cyan, `--options` in green, `PARAMETERS` in yellow, descriptions in plain text. `--no-color` or the `NO_COLOR` variable turns them off; `FORCE_COLOR=1` turns them on when piping into a pager (`less -R`).
 
 **Short command (optional).** From the repository root run `./install.sh` once; it links `bin/crewctl` as `~/.local/bin/crewctl` (no pip, no virtual environment, works with conda). You then type `crewctl <command>` instead of `python3 -m crewctl <command>`, and `export CREWCTL_DIR=/path/to/your/config/folder` replaces `-c <folder>` on every call. Everything in this README works either way.

@@ -18,6 +18,10 @@ CODES = {"cmd": "1;36", "opt": "32", "param": "33", "head": "1", "dim": "2"}
 
 # (title, [(command words, usage, description), ...])
 JOBS = [
+    ("START HERE. Not sure which command? Let crewctl suggest it", [
+        ("crewctl guide", "", "describe what you want, then build the command one choice at a time; each choice shows the command and its effect"),
+        ("crewctl completion", "bash|zsh|fish", "print a Tab-completion script (commands, options with descriptions, and your crewmate/workspace/server names)"),
+    ]),
     ("JOB 1. Build and manage the crew (a team of Kiro Crew agents, from JSON files)", [
         ("crewctl init", "[--force] [--team devteam|example [--update]]", "start a config folder, optionally with a ready-made team; --update refreshes an existing copy"),
         ("crewctl validate", "", "check the config, change nothing"),

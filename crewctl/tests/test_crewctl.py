@@ -1819,6 +1819,257 @@ class McpCommands(unittest.TestCase):
                 self.assertEqual(Handler.seen[-1][2], "sess-1")             # the session id from initialize is sent back
 
 
+class GuideTests(unittest.TestCase):
+    def setUp(self):
+        from crewctl import guide as guide_module
+        self.g = guide_module
+        self.env = Env(workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}})
+        self.addCleanup(self.env.close)
+        for name in ("alpha", "beta"):
+            self.env.agent(name)
+
+    def make(self, answers, run=None):
+        feed = iter(answers)
+        self.out = []
+
+        def fake_input(prompt=""):
+            self.out.append(prompt)
+            try:
+                return next(feed)
+            except StopIteration:
+                raise EOFError
+        self.ran = []
+        run = run or (lambda argv: self.ran.append(argv) or 0)
+        return self.g.Guide(cli.build_parser(), self.env.cfg, {"agents_dir": self.env.agents, "crew_home": self.env.crew_home},
+                            color=False, input_fn=fake_input, print_fn=self.out.append, run_fn=run)
+
+    def text(self):
+        return "\n".join(self.out)
+
+    def command(self, *path):
+        return next(c for c in self.g.commands(cli.build_parser()) if c.path == path)
+
+    # ---- the data is complete and cannot drift from the parser
+    def test_every_command_has_an_entry_and_every_entry_is_a_command(self):
+        paths = {c.path for c in self.g.commands(cli.build_parser())}
+        self.assertEqual(paths, set(self.g.INFO))
+        for path, (impact, effect, words) in self.g.INFO.items():
+            self.assertIn(impact, self.g.IMPACT, path)
+            self.assertGreater(len(effect), 20, path)
+        self.assertEqual({p for p in paths if p[0] == "skills"}, {("skills", w) for w in ("new", "plan", "apply", "destroy")})
+        self.assertNotIn(("guide",), paths)
+
+    def test_options_that_change_things_have_an_explicit_effect_text(self):
+        seen = set()
+        for command in self.g.commands(cli.build_parser()):
+            for arg in command.args:
+                if not arg.positional:
+                    seen.add(arg.dest)
+                    self.assertTrue(arg.help or arg.dest in self.g.EFFECTS, (command.path, arg.dest))
+        for risky in ("yes", "force", "run", "delete_records", "adopt", "all", "update", "break_lock", "target", "tools", "copy_from"):
+            self.assertIn(risky, self.g.EFFECTS)
+            self.assertIn(risky, seen)
+
+    # ---- suggesting a command from a few words
+    def test_words_find_the_right_command_first(self):
+        cmds = self.g.commands(cli.build_parser())
+        for query, expected in (("move crewmates to a workspace", ("workspace", "assign")), ("add an mcp server to agents", ("mcp", "add")),
+                                ("preview what will change", ("plan",)), ("delete everything crewctl made", ("destroy",)),
+                                ("restore the workspace after an overwrite", ("workspace", "restore")), ("list tools of a server", ("mcp", "tools")),
+                                ("check my skill files", ("lint-skills",)), ("why is kirocrew core missing", ("crew-servers",))):
+            top = [c.path for c in self.g.rank(query, cmds)[:3]]
+            self.assertIn(expected, top, (query, top))
+        self.assertEqual(self.g.rank("zzzz qqqq", cmds), [])
+
+    # ---- the command line it builds
+    def test_command_line_with_globals_flags_values_lists_and_quoting(self):
+        guide = self.make([])
+        guide.global_values["config_dir"] = "/my folder/crew"
+        line = guide.line(self.command("mcp", "add"), {"server": "fetch", "crewmates": ["a", "b"], "tools": "x,y", "yes": True})
+        self.assertEqual(line, "crewctl --config-dir '/my folder/crew' mcp add fetch a b --tools x,y --yes")
+        self.assertTrue(guide.line(self.command("skills", "plan"), {"show": True}).endswith("skills plan --show"))
+        self.assertTrue(guide.line(self.command("skills", "new"), {"name": "my-skill"}).endswith("skills new my-skill"))
+        self.assertEqual(guide.line(self.command("apply"), {"target": ["a", "b"]}), "crewctl --config-dir '/my folder/crew' apply --target a --target b")
+
+    # ---- the conversation
+    def test_building_a_command_shows_the_command_and_the_effect_after_every_choice(self):
+        guide = self.make(["move crewmates to a workspace", "1", "ops", "1 2", "1", "2", "p"])
+        self.assertEqual(guide.run(), 0)
+        text = self.text()
+        self.assertIn("Best matches for 'move crewmates to a workspace'", text)
+        self.assertIn("crewctl workspace assign ops alpha beta", text)                      # the command before any option
+        self.assertIn("crewctl workspace assign ops alpha beta --all", text)                # after the first option
+        self.assertIn("crewctl workspace assign ops alpha beta --all --yes", text)          # after the second
+        self.assertIn("Last choice:", text)
+        self.assertIn("added --all: Applies to every crewmate in the config", text)
+        self.assertIn("added --yes: No confirmation question is asked", text)
+        self.assertIn("Added so far:", text)
+        self.assertIn("[CHANGES CREW]", text)
+        self.assertEqual(self.ran, [])                                                      # `p` only prints
+
+    def test_it_runs_only_after_yes_and_passes_the_exact_arguments(self):
+        answers = ["plan", "1", "1", "alpha", "r", "yes"]
+        guide = self.make(answers)
+        self.assertEqual(guide.run(), 0)
+        self.assertEqual(self.ran, [["plan", "--target", "alpha"]])
+        guide = self.make(["plan", "1", "r", "no"])
+        guide.run()
+        self.assertEqual(self.ran, [])
+        self.assertIn("Not run.", self.text())
+
+    def test_values_can_be_picked_by_number_from_the_names_in_your_config(self):
+        guide = self.make(["apply", "1", "1", "2", "p"])
+        guide.run()
+        self.assertIn("1) alpha", self.text())
+        self.assertIn("crewctl apply --target beta", self.text())
+        guide = self.make(["destroy", "1", "p"])
+        guide.run()
+        self.assertIn("--delete-records", self.text())
+
+    def test_undo_toggle_explain_and_start_over(self):
+        guide = self.make(["apply", "1", "2", "3", "u", "?3", "2", "x", "q"])       # apply; add --yes; add --force; undo; explain --force; remove --yes
+        self.assertEqual(guide.run(), 0)
+        text = self.text()
+        self.assertIn("added --force", text)
+        self.assertIn("undid the last choice", text)
+        self.assertIn("explained --force (nothing changed)", text)
+        self.assertIn("removed --yes", text)
+        self.assertIn("What do you want to do?", text.split("Last choice:")[-1])            # `x` went back to choosing a command
+
+    def test_required_arguments_are_asked_for_until_given(self):
+        guide = self.make(["add mcp server", "1", "", "fetch", "", "p"])
+        guide.run()
+        self.assertIn("This one is required.", self.text())
+        self.assertIn("crewctl mcp add fetch", self.text())
+
+    def test_nothing_found_and_end_of_input_leave_cleanly(self):
+        guide = self.make(["zzzz qqqq", "q"])
+        self.assertEqual(guide.run(), 0)
+        self.assertIn("I found nothing for that", self.text())
+        with self.assertRaises(SystemExit) as stop:
+            self.make([]).run()
+        self.assertEqual(stop.exception.code, 0)
+
+    def test_the_guide_command_is_registered_and_runs_through_the_cli(self):
+        self.assertIn("guide", cli.build_parser()._subparsers._group_actions[0].choices)
+        with mock.patch("builtins.input", side_effect=["q"]):
+            code, text = self.env.run("guide")
+        self.assertEqual(code, 0)
+        self.assertIn("build a command step by step", text)
+
+
+class CompletionTests(unittest.TestCase):
+    def setUp(self):
+        from crewctl import completion
+        self.completion = completion
+        self.parser = cli.build_parser()
+        self.env = Env(workspaces={"default": {"dir": "workspace"}, "ops": {"dir": "workspace-ops"}})
+        self.addCleanup(self.env.close)
+        self.env.agent("alpha")
+        self.env.agent("beta")
+
+    def test_every_command_and_option_with_its_description_is_in_each_script(self):
+        tree = self.completion.build_tree(self.parser)
+        commands = [n for n in self.completion.walk(tree) if n.path]
+        self.assertIn(("guide",), [n.path for n in commands])
+        self.assertIn(("completion",), [n.path for n in commands])
+        self.assertNotIn(("values",), [n.path for n in commands])
+        for shell, script_fn in self.completion.SCRIPTS.items():
+            script = script_fn(self.parser)
+            for node in commands:
+                self.assertIn(node.name, script, (shell, node.path))
+                for arg in node.args:
+                    for flag in arg.flags:
+                        self.assertIn(flag.lstrip("-"), script, (shell, node.path, flag))
+            if shell != "bash":                                    # bash cannot show descriptions; zsh and fish do
+                self.assertIn("create one workspace" if shell == "fish" else "workspace", script)
+                self.assertIn("limit to this crewmate", script)
+
+    def test_quotes_are_balanced_on_every_line_of_the_zsh_and_fish_scripts(self):
+        for shell in ("zsh", "fish"):
+            for number, line in enumerate(self.completion.SCRIPTS[shell](self.parser).splitlines(), 1):
+                cleaned = line.replace("'\\''", "").replace("\\'", "")
+                self.assertEqual(cleaned.count("'") % 2, 0, (shell, number, line))
+
+    def test_zsh_and_fish_scripts_pass_the_shells_own_syntax_check_when_installed(self):
+        import subprocess
+        for shell, flag in (("zsh", "-n"), ("fish", "--no-execute")):
+            if not shutil.which(shell):
+                continue
+            script = self.completion.SCRIPTS[shell](self.parser)
+            result = subprocess.run([shell, flag], input=script, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, (shell, result.stderr))
+
+    def drive(self, *words):
+        """Run the generated bash completion for real and return the suggestions for the last word."""
+        import subprocess
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        script = os.path.join(folder, "c.bash")
+        open(script, "w").write(self.completion.bash_script(self.parser))
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        quoted = " ".join("'" + w + "'" for w in words)
+        driver = f"""source {script}
+crewctl() {{ (cd {root} && python3 -m crewctl "$@"); }}
+COMP_WORDS=(crewctl {quoted}); COMP_CWORD=$(( ${{#COMP_WORDS[@]}} - 1 )); COMPREPLY=()
+_crewctl
+printf '%s\\n' "${{COMPREPLY[@]}}"
+"""
+        env = {**os.environ, "CREWCTL_DIR": self.env.cfg, "CREWCTL_AGENTS_DIR": self.env.agents, "CREWCTL_CREW_HOME": self.env.crew_home,
+               "CREWCTL_MCP_JSON": os.path.join(folder, "mcp.json")}
+        json.dump({"mcpServers": {"fetch": {"command": "x"}, "docs": {"command": "y"}}}, open(env["CREWCTL_MCP_JSON"], "w"))
+        result = subprocess.run(["bash", "-c", driver], capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.split()
+
+    def test_bash_completion_commands_subcommands_options_and_live_names(self):
+        import subprocess
+        self.assertEqual(subprocess.run(["bash", "-n"], input=self.completion.bash_script(self.parser), text=True).returncode, 0)
+        top = self.drive("")
+        for name in ("apply", "workspace", "mcp", "guide", "completion", "skills"):
+            self.assertIn(name, top)
+        self.assertNotIn("values", top)
+        self.assertEqual(self.drive("wo"), ["workspace"])
+        self.assertEqual(sorted(self.drive("workspace", "")), ["assign", "check", "create", "list", "restore"])
+        self.assertEqual(sorted(self.drive("apply", "--t")), ["--target"])
+        self.assertEqual(sorted(self.drive("apply", "--target", "")), ["alpha", "beta"])            # crewmates from the config
+        self.assertEqual(sorted(self.drive("workspace", "assign", "")), ["default", "ops"])         # workspaces
+        self.assertEqual(sorted(self.drive("mcp", "add", "")), ["docs", "fetch"])                   # servers in mcp.json
+        self.assertEqual(sorted(self.drive("skills", "")), ["apply", "destroy", "new", "plan"])
+        self.assertIn("--adopt", self.drive("skills", "apply", "--a"))
+        self.assertIn("--yes", self.drive("destroy", "--y"))
+
+    def test_values_command_prints_names_and_nothing_on_any_problem(self):
+        code, text = self.env.run("values", "crewmates")
+        self.assertEqual((code, text.split()), (0, ["alpha", "beta"]))
+        self.assertEqual(self.env.run("values", "workspaces")[1].split(), ["default", "ops"])
+        self.assertEqual(self.env.run("values", "teams")[1].split(), ["devteam", "example"])
+        self.assertEqual(self.env.run("values", "skills")[1].split(), [])
+        with self.assertRaises(SystemExit):
+            self.env.run("values", "nonsense")
+
+    def test_completion_command_prints_each_script(self):
+        for shell in ("bash", "zsh", "fish"):
+            code, text = self.env.run("completion", shell)
+            self.assertEqual(code, 0)
+            self.assertIn("crewctl", text)
+
+    def test_every_command_line_the_guide_can_build_is_accepted_by_the_real_parser(self):
+        from crewctl import guide
+        g = guide.Guide(self.parser, "/nonexistent", {}, color=False, input_fn=lambda p: "", print_fn=lambda *_: None)
+        for command in g.commands:
+            values = {}
+            for arg in command.args:
+                if arg.positional and arg.dest not in command.preset:
+                    values[arg.dest] = ["x"] if arg.kind == "multi" else (arg.choices[0] if arg.choices else "x")
+                elif not arg.positional:
+                    values[arg.dest] = True if arg.kind == "flag" else (["v"] if arg.kind == "multi" else (arg.choices[0] if arg.choices else "5"))
+            try:
+                self.parser.parse_args(g.argv(command, values))
+            except SystemExit:
+                self.fail(f"the guide builds a command line the parser rejects: {command.path} {g.argv(command, values)}")
+
+
 class Packaging(unittest.TestCase):
     def test_pyproject_exposes_a_crewctl_command_that_exists(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -2024,7 +2275,7 @@ class ColoredHelp(unittest.TestCase):
         names = set()
         for action in parser._actions:
             if isinstance(action, argparse._SubParsersAction):
-                names = set(action.choices) - {"overview"}
+                names = set(action.choices) - {"overview", "values"}
                 review = set(action.choices["review"]._actions[-1].choices)
         listed = {entry[0].split()[1] for _, entries in JOBS for entry in entries}
         self.assertEqual(listed, names)

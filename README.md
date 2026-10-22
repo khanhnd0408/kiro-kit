@@ -20,6 +20,13 @@ There is nothing to pip-install and no virtual environment: crewctl uses only Py
 
 Without installing: run `./bin/crewctl <command>` from this folder, or `cd crewctl && python3 -m crewctl <command>`. Running `python3 -m crewctl` from this top folder fails with `No module named crewctl`; the module is one level down.
 
+## Not sure which command?
+
+```bash
+crewctl guide                       # describe what you want; it builds the command and shows what each choice does
+source <(crewctl completion bash)   # Tab completion (zsh: the same with `zsh`; fish: crewctl completion fish | source)
+```
+
 ## Job 1: the crew
 
 Start from the ready-made team (`crewctl -c ~/crew init --team devteam` makes your own editable copy), or from an empty folder (`crewctl -c ~/crew init`, then add `<name>.agent.json` files; until you do, `validate` says "no *.agent.json files found").
