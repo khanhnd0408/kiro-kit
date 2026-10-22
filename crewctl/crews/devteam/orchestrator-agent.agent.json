@@ -42,9 +42,6 @@
         "monitor_update",
         "monitor_inspect",
         "autonudge_stop"
-      ],
-      "disabledTools": [
-        "wait"
       ]
     }
   },

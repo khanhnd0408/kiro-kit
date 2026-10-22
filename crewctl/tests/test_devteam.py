@@ -328,13 +328,13 @@ class Pack(Tmp):
             for script in os.listdir(os.path.join(self.skills, name, "scripts")) if os.path.isdir(os.path.join(self.skills, name, "scripts")) else []:
                 self.assertTrue(os.access(os.path.join(self.skills, name, "scripts", script), os.X_OK), (name, script))
 
-    def test_the_wait_tool_is_switched_off_for_every_agent_not_just_left_out(self):
+    def test_no_agent_selects_the_wait_tool_and_none_carries_disabled_tools(self):
         for name in os.listdir(PACK):
             if not name.endswith("-agent.agent.json"):
                 continue
             core = json.load(open(os.path.join(PACK, name)))["crew_servers"]["core"]
-            self.assertEqual(core.get("disabledTools"), ["wait"], name)
             self.assertNotIn("wait", core["tools"], name)
+            self.assertNotIn("disabledTools", core, name)               # removed on purpose: the tools list is enough
 
     def test_orchestrator_loop_is_crews_monitor_loop_and_never_the_wait_tool(self):
         agent = json.load(open(os.path.join(PACK, "orchestrator-agent.agent.json")))

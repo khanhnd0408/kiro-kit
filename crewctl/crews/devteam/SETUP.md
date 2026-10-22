@@ -206,15 +206,15 @@ brings the files and Crew's records back. If the command is not available on you
 
 Run these on the machine, then tell me the outputs and which agent made the `wait` call (open the session transcript):
 ```bash
-grep -n '"@kirocrew-core/wait"\|disabledTools\|monitor_start' ~/.kiro/agents/orchestrator-agent.json
+grep -n '"@kirocrew-core/wait"\|monitor_start' ~/.kiro/agents/orchestrator-agent.json
 kirocrew config get agent.acp_backend
 ```
-A correct file has `"disabledTools": ["wait"]` and `@kirocrew-core/monitor_start`, and no `@kirocrew-core/wait`. The usual reasons for a `wait` call, in order:
+A correct file has `@kirocrew-core/monitor_start` and no `@kirocrew-core/wait`. The usual reasons for a `wait` call, in order:
 1. **The agent file on this machine is the old one.** Run `crewctl plan`; it should show no changes. If it shows the orchestrator changing, run `crewctl apply`.
 2. **The chat is old.** A conversation that was open before the update keeps its old prompt. Start a new chat.
 3. **You are talking to another agent.** Crew's default agent and its conductor use `wait` by design. Pick `orchestrator-agent` in the chat's agent selector.
 4. **The conversation cannot hold a loop.** `monitor_start` is refused outside dashboard chat, Slack, Discord and Webex, and while another loop is active. The orchestrator then ends its turn instead (it must not wait); the refusal text is in the transcript.
-5. **A different Crew backend.** If `agent.acp_backend` is not empty (for example `kas`, `claude`, `codex`), Crew passes tools to the agent differently. `disabledTools` is the setting that works on all of them; if `wait` is still offered, tell me the backend.
+5. **A different Crew backend.** If `agent.acp_backend` is not empty (for example `kas`, `claude`, `codex`), Crew passes tools to the agent differently, and a tools list may not hide `wait` there. Tell me the backend and I will look at how that backend handles it.
 
 ## Updating to a newer version of the team (after `git pull`)
 
@@ -244,7 +244,6 @@ cd kiro-kit && git pull
    cd ~/.kiro/agents
    grep -L "Self-check before every tool call" *-agent.json          # agent files without the language self-check
    grep -l  "@kirocrew-core/wait" *-agent.json                        # agent files that still offer the wait tool
-   grep -L  '"disabledTools"' *-agent.json                            # agent files that do not switch wait off
    grep -c  "SUBAGENT TASK from orchestrator-agent" orchestrator-agent.json
    ```
 4. **Start a new chat** with each crewmate. A conversation that is already open keeps the prompt it started with.

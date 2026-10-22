@@ -27,9 +27,6 @@
       "tools": [
         "skill_search",
         "ask_question"
-      ],
-      "disabledTools": [
-        "wait"
       ]
     }
   },
