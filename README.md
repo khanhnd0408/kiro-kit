@@ -53,15 +53,26 @@ crewctl review check /path/to/your/project      # re-check every file:line citat
 
 ## Job 3: credit usage in Grafana
 
+Two parts: the exporter (`crewctl usage`, on the machine that runs Kiro Crew) and a backend (OpenTelemetry Collector,
+VictoriaMetrics, VictoriaLogs, Grafana). crewctl does not install the backend; `crewctl/usage-otel/docker-compose.yml`
+runs one locally, or you point the exporter at a Victoria stack you already have.
+
 ```bash
-cd crewctl/usage-otel && docker compose up -d   # optional local stack: OTel Collector, VictoriaMetrics, VictoriaLogs, Grafana
-crewctl usage init                              # ~/.config/crewctl/usage.json; set "endpoint": "http://localhost:4318"
-crewctl usage push --dry-run                    # exactly what would be sent; sends nothing
-crewctl usage push                              # send what Crew recorded since the last run, then exit
-crewctl usage schedule                          # the cron, systemd or launchd lines that run it every few minutes
+# 1. backend (needs Docker; ports on 127.0.0.1 only; about 300 MB RAM, 2.5 GB disk)
+cd crewctl/usage-otel && docker compose up -d        # Grafana: http://localhost:3000 (admin / admin)
+
+# 2. exporter (Python 3.8+, nothing to pip-install)
+crewctl usage init                                   # ~/.config/crewctl/usage.json; set "endpoint": "http://localhost:4318"
+crewctl usage push --dry-run                         # exactly what would be sent; sends nothing
+crewctl usage push                                   # send what Crew recorded since the last run, then exit
+
+# 3. every few minutes
+crewctl usage schedule                               # prints the systemd, launchd or cron lines; you add them
 ```
 
-It only reads Crew's usage files and calls no model. Prompts, responses, paths and error text are never sent. Details, privacy settings and the dashboard: `crewctl/usage-otel/README.md`.
+It only reads Crew's usage files, writes nothing under `~/.kiro`, and calls no model. Prompts, responses, paths and error
+text are never sent. The full guide (requirements, your own Victoria stack, several machines, privacy settings, what it
+changes and how to remove it): `crewctl/usage-otel/README.md`.
 
 ## All commands
 

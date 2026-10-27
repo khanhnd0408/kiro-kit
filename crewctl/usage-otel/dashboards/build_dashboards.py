@@ -13,7 +13,9 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 METRICS = {"type": "prometheus", "uid": "${metrics}"}
-FILTER = 'agent=~"$agent", workspace=~"$workspace", model=~"$model"'
+# Every panel filters on the same variables, so metric and log panels always describe the same data. service.name
+# tells apart senders that set their own (resource_attributes); several machines can share one.
+FILTER = 'service.name=~"$service", agent=~"$agent", workspace=~"$workspace", model=~"$model"'
 
 
 def prom(expr, legend="", instant=False, table=False, ref="A"):
@@ -97,13 +99,13 @@ def metric_panels():
         stat("Credits in range", prom(total, instant=True), x=0, y=1,
              description="Every billed turn: chat, subagents, background and automation."),
         stat("Billed turns", prom(spent("kiro_turns_total"), instant=True), decimals=0, x=4, y=1),
-        stat("Subagent share", prom(f"{subagent} / {total}",
+        stat("Subagent share", prom(f"({subagent} or vector(0)) / {total}",
                                     instant=True), unit="percentunit", x=8, y=1),
-        stat("Background share", prom(f"{background} / {total}",
+        stat("Background share", prom(f"({background} or vector(0)) / {total}",
                                       instant=True), unit="percentunit", x=12, y=1,
              description="Crew's own background jobs (tips, suggestions, titles, memory). Not caused by a chat."),
         stat("Burn rate (credits in the last hour)", prom(spent("kiro_credits_total", window="1h"), instant=True), x=16, y=1),
-        stat("Last push", prom("time() - max(max_over_time(kiro_usage_last_push_timestamp_seconds[1d]))", instant=True), unit="s", decimals=0, x=20, y=1,
+        stat("Last push", prom('time() - max(max_over_time(kiro_usage_last_push_timestamp_seconds{service.name=~"$service"}[1d]))', instant=True), unit="s", decimals=0, x=20, y=1,
              thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 900}, {"color": "red", "value": 3600}],
              description="Seconds since `crewctl usage push` last ran. Red: the scheduler stopped or cannot reach this backend."),
         *trend_panels(),
@@ -121,7 +123,7 @@ def metric_panels():
 
 
 LOGS = {"type": "victoriametrics-logs-datasource", "uid": "${logs}"}
-LOG_BASE = '{service.name="kiro-crew"}'
+LOG_BASE = '{service.name=~"$service"}'
 LOG_FILTER = 'agent:~"$agent" workspace:~"$workspace" model:~"$model"'
 
 
@@ -189,6 +191,7 @@ def dashboard(uid, title, logs_type, log_panels):
         "templating": {"list": [
             {"name": "metrics", "label": "Metrics", "type": "datasource", "query": "prometheus", "refresh": 1, "hide": 0},
             {"name": "logs", "label": "Logs", "type": "datasource", "query": logs_type, "refresh": 1, "hide": 0},
+            variable("service", "Service", "label_values(kiro_credits_total, service.name)"),
             variable("agent", "Agent", "label_values(kiro_credits_total, agent)"),
             variable("model", "Model", "label_values(kiro_credits_total, model)"),
             variable("workspace", "Workspace", "label_values(kiro_credits_total, workspace)"),

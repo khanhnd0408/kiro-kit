@@ -623,6 +623,7 @@ class Commands(Base):
         self.assertEqual(self.w.cli("usage", "init")[0], 1)
         code, out = self.w.cli("usage", "push")
         self.assertIn("off: no endpoint is set", out)
+        self.assertNotIn("usage init", out)          # the file exists; the advice is to set an endpoint in it
         self.assertEqual(self.w.cli("usage", "push", "--quiet"), (0, ""))
         self.assertFalse(os.path.exists(self.w.state_dir))
 
@@ -649,15 +650,30 @@ class Commands(Base):
         self.assertIn("byte(s) of usage rows not sent yet", self.w.cli("usage", "status")[1])
 
     def test_schedule_prints_each_kind_and_installs_nothing(self):
-        for kind, needle in (("cron", "*/5 * * * * nice -n 10"), ("systemd", "OnUnitActiveSec=5min"), ("launchd", "<integer>300</integer>")):
+        launcher = os.path.join(os.path.dirname(ROOT), "bin", "crewctl")
+        for kind, needle in (("cron", "*/5 * * * * mkdir -p "), ("systemd", "OnUnitActiveSec=5min"), ("launchd", "<integer>300</integer>")):
             code, out = self.w.cli("usage", "schedule", kind)
             self.assertEqual(code, 0)
             self.assertIn(needle, out)
             self.assertIn("usage", out)
             self.assertIn("push", out)
+            self.assertIn("CREWCTL_PYTHON", out)                      # a scheduler's PATH has no conda or venv
+            self.assertIn(usage.python_path(), out)
+            self.assertIn(launcher, out)                              # not on PATH here: the repository's launcher
+            self.assertIn("does not exist yet", out)
         code, out = self.w.cli("usage", "schedule", "cron", "--every", "15", "--settings", "/x/u.json")
         self.assertIn("*/15 * * * *", out)
         self.assertIn("--settings /x/u.json", out)
+        # The settings file and state folder below come from CREWCTL_* variables that a scheduler will not have:
+        # every line must name them anyway, or the job would read another file and resend everything.
+        for kind in ("cron", "systemd", "launchd"):
+            out = self.w.cli("usage", "schedule", kind)[1]
+            self.assertIn(self.w.settings_path, out, kind)
+            self.assertIn(f"CREWCTL_USAGE_STATE", out, kind)
+            self.assertIn(self.w.state_dir, out, kind)
+            self.assertNotIn("--crew-home", out, kind)
+        out = self.w.cli("--crew-home", "/srv/my crew", "usage", "schedule", "systemd")[1]
+        self.assertIn('"--crew-home" "/srv/my crew" "usage" "push"', out)          # quoted for systemd, before the command
         with self.assertRaises(SystemExit):
             with contextlib.redirect_stderr(io.StringIO()):
                 cli.main(["usage", "schedule", "--every", "0"])
@@ -705,15 +721,16 @@ class Dashboard(unittest.TestCase):
             kinds.add(source)
             if source == "prometheus":
                 self.assertLessEqual(set(re.findall(r"kiro_[a-z_]+", expr)), sent_metrics, expr)
-                labels = set(re.findall(r'\b([a-z_]+)\s*=~?\s*"', expr)) | {
+                labels = set(re.findall(r'([a-z_.]+)\s*=~?\s*"', expr)) | {
                     l.strip() for group in re.findall(r"by \(([^)]*)\)", expr) for l in group.split(",")}
-                self.assertLessEqual(labels, set(usage.METRIC_LABELS), expr)
+                self.assertLessEqual(labels, set(usage.METRIC_LABELS) | {"service.name"}, expr)
+                self.assertIn('service.name=~"$service"', expr)       # every panel follows the Service filter
             else:
                 fields = set(re.findall(r"\b([a-z_]+):(?:=|~|\*|\")", expr))
                 fields |= {f.strip().split()[0] for group in re.findall(r"by \(([^)]*)\)", expr) for f in group.split(",")}
                 fields |= set(re.findall(r"(?:sum|max)\(([a-z_]+)\)", expr))
                 self.assertLessEqual(fields - {"_time", "_msg", "_stream"}, set(usage.SENT_FIELDS), expr)   # minus VictoriaLogs' own fields
-                self.assertIn('{service.name="kiro-crew"}', expr)
+                self.assertIn('{service.name=~"$service"}', expr)
         self.assertEqual(kinds, {"prometheus", "victoriametrics-logs-datasource"})
 
     def test_the_local_stack_wires_the_collector_to_both_stores(self):
@@ -726,3 +743,6 @@ class Dashboard(unittest.TestCase):
         for port in ("4318", "3000", "8428", "9428"):
             self.assertIn(f'"127.0.0.1:{port}:{port}"', compose)       # never listens on other interfaces
         self.assertIn("victoriametrics-logs-datasource", compose)
+        self.assertIn("image: otel/opentelemetry-collector:latest", compose)         # core: 184 MB, not contrib's 420 MB
+        self.assertIn('GF_PLUGINS_PREINSTALL_DISABLED: "true"', compose)
+        self.assertIn("service_completed_successfully", compose)                    # the plugin is in place before Grafana starts

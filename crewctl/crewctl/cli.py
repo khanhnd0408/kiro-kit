@@ -708,8 +708,12 @@ def cmd_usage(args):
     if args.usage_action == "schedule":
         settings = _usage_settings(args, out)
         kind = args.scheduler or usage.default_scheduler()
-        print(usage.schedule_text(kind, args.every, path, usage.launcher_path()), end="")
-        if settings is not None and not settings.enabled:
+        crew_home = (settings.crew_home if settings is not None else "") if (args.crew_home or os.environ.get("KIROCREW_HOME")) else ""
+        print(usage.schedule_text(kind, args.every, path, usage.launcher_path(), usage.python_path(),
+                                  usage.default_state_dir(), crew_home), end="")
+        if settings is not None and not settings.exists:
+            print(out.yellow(f"\nNote: {_tilde(path)} does not exist yet; create it with `crewctl usage init` and set an endpoint."))
+        elif settings is not None and not settings.enabled:
             print(out.yellow(f"\nNote: {_tilde(path)} has no endpoint yet, so each run would only say that export is off."))
         return 0
     if args.usage_action == "status":
@@ -720,8 +724,11 @@ def cmd_usage(args):
         return 1
     if not settings.exists or not settings.enabled:
         if not quiet:
-            reason = "there is no settings file" if not settings.exists else "no endpoint is set"
-            print(f"Usage export is off: {reason} ({_tilde(path)}). `crewctl usage init` creates the file.")
+            if not settings.exists:
+                print(f"Usage export is off: there is no settings file ({_tilde(path)}). `crewctl usage init` creates it.")
+            else:
+                print(f"Usage export is off: no endpoint is set in {_tilde(path)}. Set \"endpoint\" (or logs_endpoint and "
+                      "metrics_endpoint) in it, then run `crewctl usage push --dry-run`.")
         return 0
     if not os.path.isdir(settings.crew_home):
         print(out.red(f"Crew's data folder {_tilde(settings.crew_home)} does not exist. Set \"crew_home\" in {_tilde(path)} or use --crew-home."))

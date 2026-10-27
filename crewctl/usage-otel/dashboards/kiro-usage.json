@@ -36,6 +36,34 @@
         "hide": 0
       },
       {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics}"
+        },
+        "query": {
+          "query": "label_values(kiro_credits_total, service.name)",
+          "refId": "service"
+        },
+        "definition": "label_values(kiro_credits_total, service.name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
         "name": "agent",
         "label": "Agent",
         "type": "query",
@@ -159,7 +187,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "expr": "sum (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -216,7 +244,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sum (max_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "expr": "sum (max_over_time(kiro_turns_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -273,7 +301,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sum (max_over_time(kiro_credits_total{kind=\"subagent\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"subagent\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "expr": "(sum (max_over_time(kiro_credits_total{kind=\"subagent\", service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"subagent\", service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) or vector(0)) / sum (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -330,7 +358,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sum (max_over_time(kiro_credits_total{kind=\"background\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"background\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "expr": "(sum (max_over_time(kiro_credits_total{kind=\"background\", service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"background\", service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) or vector(0)) / sum (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -387,7 +415,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]))",
+          "expr": "sum (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -444,7 +472,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "time() - max(max_over_time(kiro_usage_last_push_timestamp_seconds[1d]))",
+          "expr": "time() - max(max_over_time(kiro_usage_last_push_timestamp_seconds{service.name=~\"$service\"}[1d]))",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -511,7 +539,7 @@
           },
           "queryType": "statsRange",
           "legendFormat": "{{kind}}",
-          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (kind:\"\") \"(none)\" as kind | stats by (kind) sum(credits) as credits"
+          "expr": "{service.name=~\"$service\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (kind:\"\") \"(none)\" as kind | stats by (kind) sum(credits) as credits"
         }
       ],
       "fieldConfig": {
@@ -570,7 +598,7 @@
           },
           "queryType": "statsRange",
           "legendFormat": "{{agent}}",
-          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) sum(credits) as credits"
+          "expr": "{service.name=~\"$service\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) sum(credits) as credits"
         }
       ],
       "fieldConfig": {
@@ -627,7 +655,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sort_desc(label_replace(sum by (agent) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"))",
+          "expr": "sort_desc(label_replace(sum by (agent) (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"))",
           "legendFormat": "{{agent}}",
           "range": false,
           "instant": true
@@ -676,7 +704,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sort_desc(label_replace(sum by (model) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"model\", \"(none)\", \"model\", \"\"))",
+          "expr": "sort_desc(label_replace(sum by (model) (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"model\", \"(none)\", \"model\", \"\"))",
           "legendFormat": "{{model}}",
           "range": false,
           "instant": true
@@ -725,7 +753,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sort_desc(label_replace(sum by (workspace) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"workspace\", \"(none)\", \"workspace\", \"\"))",
+          "expr": "sort_desc(label_replace(sum by (workspace) (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"workspace\", \"(none)\", \"workspace\", \"\"))",
           "legendFormat": "{{workspace}}",
           "range": false,
           "instant": true
@@ -774,7 +802,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "sort_desc(sum by (kind, surface) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])))",
+          "expr": "sort_desc(sum by (kind, surface) (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -832,7 +860,7 @@
             "type": "prometheus",
             "uid": "${metrics}"
           },
-          "expr": "label_replace(label_replace(sum by (agent, model) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum by (agent, model) (max_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"), \"model\", \"(none)\", \"model\", \"\")",
+          "expr": "label_replace(label_replace(sum by (agent, model) (max_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum by (agent, model) (max_over_time(kiro_turns_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{service.name=~\"$service\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"), \"model\", \"(none)\", \"model\", \"\")",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -903,7 +931,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "${logs}"
           },
-          "expr": "{service.name=\"kiro-crew\"} event:=turn root_session_key:* agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (workspace:\"\") \"(none)\" as workspace | stats by (root_session_key, root_session_id, workspace) sum(credits) as credits | sort by (credits desc) | limit 20",
+          "expr": "{service.name=~\"$service\"} event:=turn root_session_key:* agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (workspace:\"\") \"(none)\" as workspace | stats by (root_session_key, root_session_id, workspace) sum(credits) as credits | sort by (credits desc) | limit 20",
           "queryType": "stats",
           "legendFormat": ""
         }
@@ -970,7 +998,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "${logs}"
           },
-          "expr": "{service.name=\"kiro-crew\"} event:=turn kind:=subagent agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (root_session_key, agent) sum(credits) as credits | sort by (credits desc) | limit 30",
+          "expr": "{service.name=~\"$service\"} event:=turn kind:=subagent agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (root_session_key, agent) sum(credits) as credits | sort by (credits desc) | limit 30",
           "queryType": "stats",
           "legendFormat": ""
         }
@@ -1037,7 +1065,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "${logs}"
           },
-          "expr": "{service.name=\"kiro-crew\"} event:=subagent_run agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent, outcome) count() as runs",
+          "expr": "{service.name=~\"$service\"} event:=subagent_run agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent, outcome) count() as runs",
           "queryType": "stats",
           "legendFormat": ""
         }
@@ -1104,7 +1132,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "${logs}"
           },
-          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) max(context_pct) as context_pct",
+          "expr": "{service.name=~\"$service\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) max(context_pct) as context_pct",
           "queryType": "statsRange",
           "legendFormat": "{{agent}}"
         }
@@ -1162,7 +1190,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "${logs}"
           },
-          "expr": "{service.name=\"kiro-crew\"} agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | sort by (_time desc)",
+          "expr": "{service.name=~\"$service\"} agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | sort by (_time desc)",
           "queryType": "instant",
           "legendFormat": ""
         }

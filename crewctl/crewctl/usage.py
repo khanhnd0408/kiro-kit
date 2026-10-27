@@ -899,27 +899,53 @@ def pending_bytes(settings, state):
 
 
 def launcher_path():
-    """The crewctl command a scheduler should run: the one on PATH, else this very program."""
+    """The crewctl command a scheduler should run: the one on PATH, else the launcher in this repository."""
     import shutil
     found = shutil.which("crewctl")
     if found:
-        return found
-    argv0 = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
-    return argv0 if os.path.basename(argv0) == "crewctl" else "/full/path/to/kiro-kit/bin/crewctl"
+        return os.path.abspath(found)
+    repo_launcher = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bin", "crewctl")
+    if os.access(repo_launcher, os.X_OK):
+        return repo_launcher
+    return "/full/path/to/kiro-kit/bin/crewctl"
 
 
-def schedule_text(kind, minutes, settings_path, launcher):
-    """The scheduler snippet, as text to print. crewctl never installs it itself."""
-    extra = "" if settings_path == default_settings_path() else f" --settings {settings_path}"
-    command = f"{launcher} usage push --quiet{extra}"
-    state_dir = default_state_dir()
+def python_path():
+    """The Python running crewctl now. Scheduler lines pin it: a scheduler's PATH has no conda or venv, and on macOS
+    /usr/bin/python3 can be the stub that asks to install the developer tools."""
+    return os.path.abspath(sys.executable) if sys.executable else "python3"
+
+
+def schedule_text(kind, minutes, settings_path, launcher, python="python3", state_dir=None, crew_home=""):
+    """The scheduler snippet, as text to print. crewctl never installs it itself.
+
+    A scheduler starts with almost no environment: no conda or venv on PATH, none of the CREWCTL_* or KIROCREW_HOME
+    variables of your shell. So every line names the Python, the settings file and the state folder explicitly (and
+    Crew's folder when it came from --crew-home or KIROCREW_HOME): the job then runs exactly what you ran by hand,
+    and shares its read positions, so nothing is sent twice.
+    """
+    import shlex
+    from xml.sax.saxutils import escape
+    state_dir = state_dir or default_state_dir()
+    argv = [launcher] + (["--crew-home", crew_home] if crew_home else []) + ["usage", "push", "--quiet", "--settings", settings_path]
+    env = {"CREWCTL_PYTHON": python, "CREWCTL_USAGE_STATE": state_dir}
     if kind == "cron":
+        command = " ".join(shlex.quote(a) for a in argv)
+        assignments = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
         return (f"# Add with `crontab -e`. Runs every {minutes} min at low priority; output goes to a log file.\n"
-                f"*/{minutes} * * * * nice -n 10 {command} >> {state_dir}/cron.log 2>&1\n")
+                f"# The variables pin the Python and the state folder: cron has no conda, venv or CREWCTL_* variables.\n"
+                f"*/{minutes} * * * * mkdir -p {shlex.quote(state_dir)} && {assignments} nice -n 10 {command} "
+                f">> {shlex.quote(state_dir)}/cron.log 2>&1\n")
     if kind == "systemd":
+        def unit_quote(text):
+            text = text.replace("%", "%%")                 # systemd expands %-specifiers
+            return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        command = " ".join(unit_quote(a) for a in argv)
+        environment = "".join(f"Environment={unit_quote(f'{k}={v}')}\n" for k, v in env.items())
         return (f"# ~/.config/systemd/user/crewctl-usage.service\n"
                 f"[Unit]\nDescription=Send Kiro Crew usage to OTLP (crewctl usage push)\n\n"
                 f"[Service]\nType=oneshot\nNice=10\nIOSchedulingClass=idle\nTimeoutStartSec=300\n"
+                f"{environment}"
                 f"ExecStart={command}\n\n"
                 f"# ~/.config/systemd/user/crewctl-usage.timer\n"
                 f"[Unit]\nDescription=Run crewctl usage push every {minutes} min\n\n"
@@ -927,17 +953,20 @@ def schedule_text(kind, minutes, settings_path, launcher):
                 f"[Install]\nWantedBy=timers.target\n\n"
                 f"# Then:\n#   systemctl --user daemon-reload\n#   systemctl --user enable --now crewctl-usage.timer\n"
                 f"#   journalctl --user -u crewctl-usage.service     (the output of each run)\n")
-    args = "".join(f"\n    <string>{a}</string>" for a in [launcher, "usage", "push", "--quiet"] + (["--settings", settings_path] if extra else []))
+    args = "".join(f"\n    <string>{escape(a)}</string>" for a in argv)
+    variables = "".join(f"\n    <key>{k}</key>\n    <string>{escape(v)}</string>" for k, v in env.items())
+    log = escape(os.path.join(state_dir, "launchd.log"))
     return (f"<!-- ~/Library/LaunchAgents/local.crewctl.usage.plist -->\n"
             f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
             f'<plist version="1.0">\n<dict>\n  <key>Label</key>\n  <string>local.crewctl.usage</string>\n'
             f"  <key>ProgramArguments</key>\n  <array>{args}\n  </array>\n"
+            f"  <key>EnvironmentVariables</key>\n  <dict>{variables}\n  </dict>\n"
             f"  <key>StartInterval</key>\n  <integer>{minutes * 60}</integer>\n"
             f"  <key>Nice</key>\n  <integer>10</integer>\n  <key>LowPriorityIO</key>\n  <true/>\n"
-            f"  <key>StandardOutPath</key>\n  <string>{state_dir}/launchd.log</string>\n"
-            f"  <key>StandardErrorPath</key>\n  <string>{state_dir}/launchd.log</string>\n</dict>\n</plist>\n"
-            f"<!-- Then: mkdir -p {state_dir} && launchctl load ~/Library/LaunchAgents/local.crewctl.usage.plist -->\n")
+            f"  <key>StandardOutPath</key>\n  <string>{log}</string>\n"
+            f"  <key>StandardErrorPath</key>\n  <string>{log}</string>\n</dict>\n</plist>\n"
+            f"<!-- Then: mkdir -p {shlex.quote(state_dir)} && launchctl load ~/Library/LaunchAgents/local.crewctl.usage.plist -->\n")
 
 
 def default_scheduler():

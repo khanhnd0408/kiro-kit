@@ -30,54 +30,99 @@ Kiro Crew (unchanged)                       crewctl usage push (one run, then ex
 - **Kiro reports no token counts**, only credits and context size. Token fields appear only for providers that report
   them.
 
-## Quick start: the local stack
+## Install
 
-Needs Docker. Every port listens on `127.0.0.1` only.
+Two parts, which can live on one machine or two:
+
+| Part | Where | What it needs |
+|---|---|---|
+| **Exporter**: `crewctl usage push` | The machine that runs Kiro Crew | Python 3.8 or newer. Nothing to pip-install. |
+| **Backend**: OTel Collector, VictoriaMetrics, VictoriaLogs, Grafana | That machine, or a server | Docker with Compose v2, about 300 MB of RAM and 2.5 GB of disk (details below) |
+
+`crewctl` does not install or run the backend. This folder gives you a compose file for it, or you use a Victoria stack you
+already have.
+
+### Step 1. The backend (local stack)
 
 ```bash
-cd crewctl/usage-otel
-docker compose up -d                 # collector :4318, VictoriaMetrics :8428, VictoriaLogs :9428, Grafana :3000
+cd kiro-kit/crewctl/usage-otel
+docker compose up -d
+docker compose ps            # grafana-plugins: Exited (0); the four others: Up
 ```
 
-Grafana downloads the VictoriaLogs plugin on its first start. That needs internet access once and takes about a minute;
-until it finishes, the log panels show an error, so reload the dashboard then.
+What happens on the first start, measured: a one-shot `grafana-plugins` step downloads the VictoriaLogs plugin into
+Grafana's volume (internet needed this once), then Grafana starts with it. Everything is up in about 40 seconds; later
+starts reuse the plugin. Grafana's own default plugin set is turned off, which saves about 330 MB.
 
-Then, on the machine that runs Kiro Crew:
+Open http://localhost:3000, log in as admin / admin and change the password. The **Kiro Crew usage** dashboard is
+already there; it stays empty until the exporter sends something.
+
+| Service | Port (127.0.0.1 only) | Role |
+|---|---|---|
+| `otel-collector` | 4318 | OTLP/HTTP receiver: what crewctl sends to. Forwards metrics to VictoriaMetrics and logs to VictoriaLogs. |
+| `victoriametrics` | 8428 | Metrics, PromQL. 90-day retention. |
+| `victorialogs` | 9428 | Log records, LogsQL. 90-day retention. |
+| `grafana` | 3000 | The dashboard. |
+
+### Step 2. The exporter (on the Kiro Crew machine)
 
 ```bash
-crewctl usage init                   # writes ~/.config/crewctl/usage.json; export stays off until it has an endpoint
-# set "endpoint": "http://localhost:4318" in that file
-crewctl usage push --dry-run         # shows exactly what would be sent, decoded; sends nothing, moves nothing
-crewctl usage push                   # the first real run (backfills the last 3 days, see backfill_days)
-crewctl usage status                 # last run, last error, how much is not sent yet
+cd kiro-kit && git pull            # the usage commands are part of crewctl
+./install.sh                       # once: links crewctl into ~/.local/bin (skip if crewctl already works)
+crewctl usage init                 # writes ~/.config/crewctl/usage.json; nothing is sent until it has an endpoint
 ```
 
-Open http://localhost:3000 (admin / admin), dashboard **Kiro Crew usage**.
+Edit `~/.config/crewctl/usage.json` and set the endpoint:
 
-**Try it without Kiro.** `demo/make_demo_crew_home.py` writes a fake Crew home with a few hours of made-up usage, in
-Crew's own file format:
+```json
+{ "endpoint": "http://localhost:4318" }
+```
+
+Then check before sending anything:
+
+```bash
+crewctl usage push --dry-run       # the exact records and series that would be sent, decoded; sends nothing, writes nothing
+crewctl usage push                 # the first real run: sends the last 3 days (backfill_days), then only what is new
+crewctl usage status               # endpoints, last run, last error, bytes not sent yet
+```
+
+Open the dashboard. The numbers should match `crewctl usage status` ("Counted: ... credits").
+
+**Try it without Kiro first.** `demo/make_demo_crew_home.py` writes a fake Crew home with a few hours of made-up usage,
+in Crew's own file format:
 
 ```bash
 python3 demo/make_demo_crew_home.py /tmp/demo-crew
-crewctl --crew-home /tmp/demo-crew usage push
+crewctl --crew-home /tmp/demo-crew usage push --dry-run
 ```
 
-## Run it every few minutes
+### Step 3. Run it every few minutes
 
-`crewctl usage schedule` prints the lines for your scheduler. It installs nothing; you add them yourself.
+`crewctl usage schedule` prints the lines for your scheduler; you add them yourself. It picks launchd on macOS, systemd
+on Linux with systemd, else cron.
 
 ```bash
-crewctl usage schedule               # launchd on macOS, systemd on Linux with systemd, else cron
-crewctl usage schedule cron --every 5
-crewctl usage schedule systemd       # a user service + timer: no root needed
-crewctl usage schedule launchd
+crewctl usage schedule             # or: cron | systemd | launchd, and --every MINUTES (default 5)
 ```
 
-Each one runs `crewctl usage push --quiet` at low priority (nice 10), so it prints only errors.
+A scheduler starts jobs with almost no environment: no conda or venv on its PATH, and none of the `CREWCTL_*` or
+`KIROCREW_HOME` variables from your shell. So every printed line names the Python that ran the command
+(`CREWCTL_PYTHON`), the settings file (`--settings`), the state folder (`CREWCTL_USAGE_STATE`), and Crew's folder when you
+gave one with `--crew-home` or `KIROCREW_HOME`. The job then runs exactly what you ran by hand and shares its read
+positions, so nothing is sent twice. Run `schedule` with the same Python and options you use for `push`.
 
-## Point it at your own Victoria stack
+- **systemd (Linux, no root):** save the two printed units under `~/.config/systemd/user/`, then
+  `systemctl --user daemon-reload && systemctl --user enable --now crewctl-usage.timer`. Each run's output:
+  `journalctl --user -u crewctl-usage.service`. To keep it running while you are logged out: `loginctl enable-linger`.
+- **cron:** `crontab -e` and paste the printed line. Output goes to `~/.local/state/crewctl/usage/cron.log`.
+- **launchd (macOS):** save the printed plist as `~/Library/LaunchAgents/local.crewctl.usage.plist`, then run the
+  `mkdir` and `launchctl load` line printed under it.
 
-Through an OpenTelemetry Collector (like the local stack), set the base URL:
+Each job runs `push --quiet` at low priority (nice 10), so it prints only errors.
+
+### Step 4 (optional). Your own Victoria stack instead of the local one
+
+Through an OpenTelemetry Collector, set the base URL:
 
 ```json
 { "endpoint": "https://otel-collector.example.internal:4318" }
@@ -93,8 +138,6 @@ Straight to VictoriaLogs and VictoriaMetrics, without a collector, set the two f
 }
 ```
 
-Both ways were tested against VictoriaMetrics and VictoriaLogs (see "What was verified").
-
 - **Auth.** Put headers in a file only you can read, one `Name: value` per line, and set `"headers_file"`:
   ```bash
   printf 'Authorization: Bearer %s\n' "$TOKEN" > ~/.config/crewctl/usage.headers && chmod 600 ~/.config/crewctl/usage.headers
@@ -102,11 +145,45 @@ Both ways were tested against VictoriaMetrics and VictoriaLogs (see "What was ve
   `push` refuses the file if other users can read it. It also refuses to send it over plain `http://` to another
   machine unless you set `"allow_insecure_http": true`. Redirects are never followed, so the headers cannot be carried
   to another host. Header values never appear in crewctl's output.
-- **Which machine.** Add a few resource attributes, for example
-  `"resource_attributes": {"deployment.environment": "client-a", "service.instance.id": "laptop-1"}`. VictoriaLogs makes
-  every resource attribute a stream field, so keep them few and stable.
+- **The local stack is for one machine.** Its ports listen on 127.0.0.1 only and have no TLS or auth. Opening port 4318
+  to another machine needs both in front of it (a reverse proxy, or the collector's TLS and auth settings); this folder
+  does not set that up.
+- **Several machines.** Give each one a `"resource_attributes": {"service.instance.id": "laptop-1"}`. To keep them apart
+  in the dashboard, give each its own `"service.name"` and use the dashboard's **Service** filter; every panel follows
+  it. VictoriaLogs makes every resource attribute a stream field, so keep them few and stable.
 - **Grafana.** Import `dashboards/kiro-usage.json`. It asks for two data sources: a Prometheus-type one pointing at
   VictoriaMetrics, and a VictoriaLogs one (plugin `victoriametrics-logs-datasource`).
+
+### System requirements
+
+The exporter: Python 3.8 or newer, any OS with a scheduler. A run takes milliseconds of CPU and about 15 MB, then exits.
+
+The backend, measured at idle with demo data (Linux, Docker 29.6, Compose 5.3), next to the vendors' own guidance:
+
+| Service | Memory | Image | Vendor guidance |
+|---|---|---|---|
+| Grafana | 230 MB | 1.42 GB, plus a 215 MB data volume (mostly the plugin) | at least 512 MB RAM and 1 CPU core |
+| OpenTelemetry Collector (core) | 36 MB | 184 MB | none published |
+| VictoriaMetrics | 20 MB | 37 MB | keep 50% of RAM and CPU spare and 20% of disk free |
+| VictoriaLogs | 13 MB | 27 MB | the same; compresses logs about 10 times |
+
+In total about 300 MB of RAM and 2.5 GB of disk, including images. Data growth is small (an estimate, not measured over
+time): about 20 metric series written every 5 minutes is a few KB a day, and one log record per turn is a few MB a day
+even for a busy crew. macOS and Windows with Docker Desktop should work but were not tested.
+
+### What it changes on your machine, and how to remove it
+
+- **crewctl:** adds the `usage` commands. The other commands are unchanged and their tests pass as before. No new
+  dependency.
+- **Kiro Crew:** nothing. `push` only reads `~/.kiro/crew/usage/tokens/` and `~/.kiro/crew/crew-log/sessions/`, never
+  writes there, never calls a model, and does not turn on Crew's own telemetry.
+- **Files:** `~/.config/crewctl/usage.json` (made by `usage init`, plus your headers file if you add one) and
+  `~/.local/state/crewctl/usage/` (read positions, counters, the hash key; made by the first `push`).
+- **Docker:** four images, three volumes (`vmdata`, `vldata`, `grafanadata`) and ports 3000, 4318, 8428 and 9428 on
+  127.0.0.1. If one of those ports is taken, change the left-hand number in `docker-compose.yml`.
+
+To remove it: delete the scheduler entry; `docker compose down -v` in this folder (deletes the stored data too);
+`rm -r ~/.config/crewctl/usage.json ~/.local/state/crewctl/usage`.
 
 ## What is sent, and what never is
 
@@ -185,8 +262,15 @@ crewctl sends before a new series keeps the result right for agents that appear 
   rows are not sent yet. `crewctl usage push --dry-run` shows what would go out.
 - **A push you just made is missing from an instant query.** VictoriaMetrics leaves the last 30 seconds out of instant
   queries (`-search.latencyOffset`). Wait half a minute.
-- **The log panels show an error.** The VictoriaLogs plugin is still installing (first start), or the Logs data source
-  at the top of the dashboard is not a VictoriaLogs one.
+- **The log panels show an error.** The Logs data source at the top of the dashboard is not a VictoriaLogs one, or the
+  plugin is missing: `docker compose ps` should show `grafana-plugins` as `Exited (0)`; if not, `docker compose logs
+  grafana-plugins` says why (usually no internet on the first start).
+- **Metrics and log panels disagree.** They follow the same filters, so check the **Service** filter: two senders with
+  different `service.name` values are both counted when it is set to All.
+- **The scheduled job sends nothing, but `push` by hand works.** Print the lines again with `crewctl usage schedule`
+  from the same shell and Python you use for `push`, and replace the old entry: older lines may lack `--settings` or
+  `CREWCTL_USAGE_STATE`. For cron, read `~/.local/state/crewctl/usage/cron.log`; for systemd, `journalctl --user -u
+  crewctl-usage.service`.
 - **"most rows ... are not in the format crewctl knows".** Crew changed its usage-row format. `push` stops rather than
   guess, and sends nothing from that file. Tell the kiro-kit maintainers which Crew version you run.
 - **The counters started again from 0.** The state folder was deleted. Graphs that use `increase()` or max−min treat it
@@ -199,15 +283,19 @@ crewctl sends before a new series keeps the result right for agents that appear 
 Verified on 2026-10-27, with Crew's files from 0.8.0 (real) and 0.10.0 (format read from its source):
 
 - The protobuf encoding decodes with the official `opentelemetry-proto` 1.45.1 classes.
-- `push` through the OpenTelemetry Collector (contrib 0.164.0) into VictoriaMetrics and VictoriaLogs (latest images),
-  and straight to both without the collector. The totals match the source rows exactly: 92 turns, 44.848 credits.
-- Every dashboard panel queried through Grafana 13 with the VictoriaLogs plugin 0.33.1, and the rendered dashboard
-  checked by eye.
+- `push` through the OpenTelemetry Collector (core image) into VictoriaMetrics and VictoriaLogs (latest images), and
+  straight to both without the collector. The totals match the source rows exactly: 92 turns, 44.848 credits.
+- The local stack from an empty Docker: the plugin step, then Grafana with the plugin loaded at its first start.
+- Every dashboard panel queried through Grafana 13 with the VictoriaLogs plugin 0.33.1, for one service, another and
+  both (metric and log panels agree each time), and the rendered dashboard checked by eye, including with two agents
+  selected.
+- The printed cron line run in a cron-like environment (no conda, minimal PATH, no CREWCTL_* variables), and the printed
+  systemd service run as a transient user unit: both sent everything. The launchd plist parses with Python's plistlib.
 - The test suite (313 tests) on Python 3.8 and 3.13.
 
 Not verified:
 
 - A live Kiro Crew 0.10.0 session. This machine's Crew data comes from 0.8.0; the 0.10.0 subagent entries were read
   from its source and docs.
-- The launchd and systemd units on a real scheduler (the text is generated and tested, but not installed anywhere).
+- A systemd timer or cron entry left running over hours, and launchd on a real Mac.
 - Windows.

@@ -6,11 +6,10 @@
 #   usage.json:  "endpoint": "http://localhost:4318"            (through the collector)
 #   Grafana:     http://localhost:3000  (admin / admin), dashboard "Kiro Crew usage"
 #
-# Grafana downloads the VictoriaLogs plugin on its first start (internet needed once); until it finishes, about a
-# minute, the log panels show an error. Reload the dashboard then.
+# The first start downloads the VictoriaLogs plugin for Grafana (internet needed once, see grafana-plugins below).
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector:latest   # the core distribution has the OTLP receiver and exporter used here
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
@@ -34,18 +33,29 @@ services:
     ports:
       - "127.0.0.1:9428:9428"   # LogsQL API and OTLP logs (/insert/opentelemetry/v1/logs)
 
+  # One-shot: installs the VictoriaLogs plugin into Grafana's volume before Grafana starts, so the log panels work
+  # from the first page load. Later starts find it there and finish at once.
+  grafana-plugins:
+    image: grafana/grafana:latest
+    entrypoint: ["sh", "-c", "[ -d /var/lib/grafana/plugins/victoriametrics-logs-datasource ] || grafana cli --pluginsDir /var/lib/grafana/plugins plugins install victoriametrics-logs-datasource"]
+    volumes:
+      - grafanadata:/var/lib/grafana
+
   grafana:
     image: grafana/grafana:latest
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_PLUGINS_PREINSTALL: victoriametrics-logs-datasource
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"     # skip Grafana's default plugin set (about 330 MB this stack does not use)
     volumes:
-      - grafanadata:/var/lib/grafana            # keeps the plugin, so later starts need no download
+      - grafanadata:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:3000:3000"
-    depends_on: [victoriametrics, victorialogs]
+    depends_on:
+      victoriametrics: {condition: service_started}
+      victorialogs: {condition: service_started}
+      grafana-plugins: {condition: service_completed_successfully}
 
 volumes:
   vmdata:
