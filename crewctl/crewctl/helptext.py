@@ -55,7 +55,8 @@ JOBS = [
         ("crewctl usage init", "[--force]", "create ~/.config/crewctl/usage.json; export stays off until it has an endpoint"),
         ("crewctl usage push", "[--dry-run] [--quiet] [--max-rows N]", "send what Crew recorded since the last run, then exit"),
         ("crewctl usage status", "", "settings, last run, last error, and what is not sent yet"),
-        ("crewctl usage schedule", "[cron|systemd|launchd] [--every MINUTES]", "print the lines that run push every few minutes"),
+        ("crewctl usage schedule", "[cron|systemd|launchd] [--every MINUTES] [--report]", "print the lines that run push every few minutes (or a daily report)"),
+        ("crewctl usage export", "[--since SPAN | --from DAY --to DAY] [-o PATH]", "write one HTML report; no monitoring stack needed"),
     ]),
 ]
 

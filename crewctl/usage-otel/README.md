@@ -10,6 +10,37 @@ per orchestrator session, subagent outcomes, context pressure and the burn rate.
 
 Architecture: [../docs/usage-otel-architecture.drawio](../docs/usage-otel-architecture.drawio) (a PNG export sits next to it).
 
+## No monitoring stack? Export an HTML report
+
+If you only want a report, skip everything below: `crewctl usage export` writes one self-contained HTML file from
+Crew's files. No Docker, no endpoint, no settings file.
+
+```bash
+crewctl usage export                              # the last 30 days (Crew's Usage tab uses the same window)
+crewctl usage export --since 7d -o week.html      # or 24h, 90d, ...
+crewctl usage export --from 2026-10-01 --to 2026-10-31 -o reports/
+crewctl usage export --from yesterday             # one day: the charts switch to hourly bars
+```
+
+The file has the totals (credits, billed turns, credits per day and per turn, subagent and background share, subagent
+runs), credits over time by kind and by agent, tables by agent, model, workspace and surface, the top sessions with the
+subagents they spawned, subagent spend per session, subagent outcomes, context window use, and a daily history.
+
+- **Self-contained.** No scripts, fonts, images or links to anything outside the file: it opens offline, prints (or
+  saves as PDF from the browser), and can be attached to an email. Light or dark follows the system setting. Hover a bar
+  for its value; every chart also has a table with the same numbers.
+- **Same numbers as Crew's Usage tab**, from the same usage rows, plus the session and subagent views the tab does
+  not have.
+- **Reads only.** It writes the one HTML file and nothing else (with `hash_fields` set, the hash key is created once if
+  missing), sends nothing, and calls no model.
+- **Privacy.** If `~/.config/crewctl/usage.json` exists, its `drop_fields` and `hash_fields` apply to the report too, so
+  a report for a client follows the same rules as the export. Prompts, responses, paths and error text are never in it.
+
+**A report every day.** `crewctl usage schedule --report` prints a job that runs at 00:10 and writes yesterday's report
+to `~/kiro-usage-reports/kiro-usage-<date>.html` (`--report-dir` changes the folder). Like the push job, the lines name
+the Python, the settings file and Crew's folder, so they work under cron, systemd or launchd. The systemd timer has
+`Persistent=true`, so a day missed while the machine was off is written at the next start.
+
 ## How it works
 
 ```
@@ -291,7 +322,10 @@ Verified on 2026-10-27, with Crew's files from 0.8.0 (real) and 0.10.0 (format r
   selected.
 - The printed cron line run in a cron-like environment (no conda, minimal PATH, no CREWCTL_* variables), and the printed
   systemd service run as a transient user unit: both sent everything. The launchd plist parses with Python's plistlib.
-- The test suite (313 tests) on Python 3.8 and 3.13.
+- `usage export` on a week of demo data (1,216 turns, 483.10 credits): rendered in Chrome in light and dark mode, the
+  one-day version with hourly bars, and printed to PDF. The daily-report job (`schedule --report`) run the same two ways
+  as the push job: both wrote yesterday's file.
+- The test suite (318 tests) on Python 3.8 and 3.13.
 
 Not verified:
 

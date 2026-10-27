@@ -916,8 +916,16 @@ def python_path():
     return os.path.abspath(sys.executable) if sys.executable else "python3"
 
 
-def schedule_text(kind, minutes, settings_path, launcher, python="python3", state_dir=None, crew_home=""):
+def default_report_dir():
+    return os.path.join(os.path.expanduser("~"), "kiro-usage-reports")
+
+
+def schedule_text(kind, minutes, settings_path, launcher, python="python3", state_dir=None, crew_home="", job="push",
+                  report_dir=""):
     """The scheduler snippet, as text to print. crewctl never installs it itself.
+
+    job "push" runs `usage push` every `minutes`; job "report" runs `usage export` for yesterday, once a day at 00:10,
+    into `report_dir` (one HTML file per day).
 
     A scheduler starts with almost no environment: no conda or venv on PATH, none of the CREWCTL_* or KIROCREW_HOME
     variables of your shell. So every line names the Python, the settings file and the state folder explicitly (and
@@ -927,46 +935,63 @@ def schedule_text(kind, minutes, settings_path, launcher, python="python3", stat
     import shlex
     from xml.sax.saxutils import escape
     state_dir = state_dir or default_state_dir()
-    argv = [launcher] + (["--crew-home", crew_home] if crew_home else []) + ["usage", "push", "--quiet", "--settings", settings_path]
+    base = [launcher] + (["--crew-home", crew_home] if crew_home else [])
     env = {"CREWCTL_PYTHON": python, "CREWCTL_USAGE_STATE": state_dir}
+    if job == "report":
+        report_dir = report_dir or default_report_dir()
+        argv = base + ["usage", "export", "--from", "yesterday", "--to", "yesterday", "--settings", settings_path,
+                       "-o", report_dir.rstrip("/") + "/"]
+        log_dir, log_name, name, what = report_dir, "export.log", "crewctl-usage-report", "Write yesterday's Kiro Crew usage report"
+        when_cron, when_text = "10 0 * * *", "every day at 00:10"
+        timer = "OnCalendar=*-*-* 00:10:00\nPersistent=true\n"
+        launchd_when = "  <key>StartCalendarInterval</key>\n  <dict>\n    <key>Hour</key>\n    <integer>0</integer>\n    <key>Minute</key>\n    <integer>10</integer>\n  </dict>\n"
+        label = "local.crewctl.usage-report"
+    else:
+        argv = base + ["usage", "push", "--quiet", "--settings", settings_path]
+        log_dir, log_name, name, what = state_dir, None, "crewctl-usage", "Send Kiro Crew usage to OTLP (crewctl usage push)"
+        when_cron, when_text = f"*/{minutes} * * * *", f"every {minutes} min"
+        timer = f"OnBootSec=2min\nOnUnitActiveSec={minutes}min\nRandomizedDelaySec=30\n"
+        launchd_when = f"  <key>StartInterval</key>\n  <integer>{minutes * 60}</integer>\n"
+        label = "local.crewctl.usage"
     if kind == "cron":
         command = " ".join(shlex.quote(a) for a in argv)
         assignments = " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
-        return (f"# Add with `crontab -e`. Runs every {minutes} min at low priority; output goes to a log file.\n"
+        log = os.path.join(log_dir, log_name or "cron.log")
+        return (f"# Add with `crontab -e`. Runs {when_text} at low priority; output goes to a log file.\n"
                 f"# The variables pin the Python and the state folder: cron has no conda, venv or CREWCTL_* variables.\n"
-                f"*/{minutes} * * * * mkdir -p {shlex.quote(state_dir)} && {assignments} nice -n 10 {command} "
-                f">> {shlex.quote(state_dir)}/cron.log 2>&1\n")
+                f"{when_cron} mkdir -p {shlex.quote(log_dir)} && {assignments} nice -n 10 {command} "
+                f">> {shlex.quote(log)} 2>&1\n")
     if kind == "systemd":
         def unit_quote(text):
             text = text.replace("%", "%%")                 # systemd expands %-specifiers
             return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
         command = " ".join(unit_quote(a) for a in argv)
         environment = "".join(f"Environment={unit_quote(f'{k}={v}')}\n" for k, v in env.items())
-        return (f"# ~/.config/systemd/user/crewctl-usage.service\n"
-                f"[Unit]\nDescription=Send Kiro Crew usage to OTLP (crewctl usage push)\n\n"
+        return (f"# ~/.config/systemd/user/{name}.service\n"
+                f"[Unit]\nDescription={what}\n\n"
                 f"[Service]\nType=oneshot\nNice=10\nIOSchedulingClass=idle\nTimeoutStartSec=300\n"
                 f"{environment}"
                 f"ExecStart={command}\n\n"
-                f"# ~/.config/systemd/user/crewctl-usage.timer\n"
-                f"[Unit]\nDescription=Run crewctl usage push every {minutes} min\n\n"
-                f"[Timer]\nOnBootSec=2min\nOnUnitActiveSec={minutes}min\nRandomizedDelaySec=30\n\n"
+                f"# ~/.config/systemd/user/{name}.timer\n"
+                f"[Unit]\nDescription=Run {name} {when_text}\n\n"
+                f"[Timer]\n{timer}\n"
                 f"[Install]\nWantedBy=timers.target\n\n"
-                f"# Then:\n#   systemctl --user daemon-reload\n#   systemctl --user enable --now crewctl-usage.timer\n"
-                f"#   journalctl --user -u crewctl-usage.service     (the output of each run)\n")
+                f"# Then:\n#   systemctl --user daemon-reload\n#   systemctl --user enable --now {name}.timer\n"
+                f"#   journalctl --user -u {name}.service     (the output of each run)\n")
     args = "".join(f"\n    <string>{escape(a)}</string>" for a in argv)
     variables = "".join(f"\n    <key>{k}</key>\n    <string>{escape(v)}</string>" for k, v in env.items())
-    log = escape(os.path.join(state_dir, "launchd.log"))
-    return (f"<!-- ~/Library/LaunchAgents/local.crewctl.usage.plist -->\n"
+    log = escape(os.path.join(log_dir, log_name or "launchd.log"))
+    return (f"<!-- ~/Library/LaunchAgents/{label}.plist -->\n"
             f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-            f'<plist version="1.0">\n<dict>\n  <key>Label</key>\n  <string>local.crewctl.usage</string>\n'
+            f'<plist version="1.0">\n<dict>\n  <key>Label</key>\n  <string>{label}</string>\n'
             f"  <key>ProgramArguments</key>\n  <array>{args}\n  </array>\n"
             f"  <key>EnvironmentVariables</key>\n  <dict>{variables}\n  </dict>\n"
-            f"  <key>StartInterval</key>\n  <integer>{minutes * 60}</integer>\n"
+            f"{launchd_when}"
             f"  <key>Nice</key>\n  <integer>10</integer>\n  <key>LowPriorityIO</key>\n  <true/>\n"
             f"  <key>StandardOutPath</key>\n  <string>{log}</string>\n"
             f"  <key>StandardErrorPath</key>\n  <string>{log}</string>\n</dict>\n</plist>\n"
-            f"<!-- Then: mkdir -p {shlex.quote(state_dir)} && launchctl load ~/Library/LaunchAgents/local.crewctl.usage.plist -->\n")
+            f"<!-- Then: mkdir -p {shlex.quote(log_dir)} && launchctl load ~/Library/LaunchAgents/{label}.plist -->\n")
 
 
 def default_scheduler():

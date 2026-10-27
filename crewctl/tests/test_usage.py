@@ -746,3 +746,84 @@ class Dashboard(unittest.TestCase):
         self.assertIn("image: otel/opentelemetry-collector:latest", compose)         # core: 184 MB, not contrib's 420 MB
         self.assertIn('GF_PLUGINS_PREINSTALL_DISABLED: "true"', compose)
         self.assertIn("service_completed_successfully", compose)                    # the plugin is in place before Grafana starts
+
+
+class Export(Base):
+    """`usage export`: one self-contained HTML report, from Crew's files only."""
+
+    def export(self, *argv):
+        out = tempfile.mkdtemp(dir=self.w.root) + os.sep                       # a fresh folder: exactly one file appears
+        code, text = self.w.cli("--crew-home", self.w.crew, "usage", "export", "-o", out, *argv)
+        self.assertEqual(code, 0, text)
+        files = os.listdir(out)
+        self.assertEqual(len(files), 1, files)
+        with open(os.path.join(out, files[0]), encoding="utf-8") as handle:
+            return text, files[0], handle.read()
+
+    def test_the_report_has_the_numbers_and_nothing_external(self):
+        self.w.session("s1-aaaa", "sid-1", "chat-1", workspace="ops", entries=[
+            {"type": "subagent/spawned", "time": ms(2), "data": {"agent_id": "kid1", "agent": "reader"}},
+            {"type": "subagent/failed", "time": ms(5), "data": {"agent_id": "kid1", "outcome": "stopped", "credits": 1.5,
+                                                                "reason": "SECRET error text", "ms": 60000}}])
+        self.w.add_rows(row(1, 0.25), row(5, 1.5, slot="subagent:kid1", agent="reader", surface="subagent"),
+                        row(6, 0.25, slot="_bg", agent="", surface="bg:tips"))
+        text, name, page = self.export("--since", "2d")
+        self.assertIn("3 turn(s), 2.000 credits, 1 subagent run(s)", text)
+        self.assertTrue(name.startswith("kiro-usage-") and name.endswith(".html"))
+        for needle in ("2.00", "Top sessions, with the subagents they spawned", "chat-1", "reader", "ops", "Credits per hour, by kind"):
+            self.assertIn(needle, page)
+        self.assertIn('<span class="warn">1</span>', page)                     # the stopped run counts as not completed
+        for forbidden in ("SECRET", "/secret/client/path", "<script", "<link", "<img", "http://", "https://", "@import"):
+            self.assertNotIn(forbidden, page)
+        self.assertFalse(os.path.exists(self.w.state_dir))                     # no state, no salt
+
+    def test_names_are_escaped(self):
+        self.w.add_rows(row(1, 1.0, agent='<img src=x onerror="alert(1)">'))
+        _, _, page = self.export("--since", "1d")
+        self.assertNotIn("<img src=x", page)
+        self.assertIn("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;", page)
+
+    def test_period_choice(self):
+        today = datetime.date.today()
+        old = (today - datetime.timedelta(days=3)).isoformat()
+        self.w.add_rows(dict(row(1, 4.0), ts=ts(1, old)), day=old)
+        self.w.add_rows(row(1, 1.0))
+        self.assertIn("1 turn(s), 1.000 credits", self.export("--from", "today")[0])
+        text, name, page = self.export("--from", old, "--to", "today")
+        self.assertIn("2 turn(s), 5.000 credits", text)
+        self.assertEqual(name, f"kiro-usage-{old}_{today.isoformat()}.html")
+        self.assertIn("Credits per day, by kind", page)
+        text, _, page = self.export("--from", "yesterday")
+        self.assertIn("0 turn(s)", text)
+        self.assertIn("No billed turns in this period", page)
+        code, text = self.w.cli("--crew-home", self.w.crew, "usage", "export", "--since", "7d", "--from", "today")
+        self.assertEqual(code, 1)
+        self.assertIn("either --since or --from/--to", text)
+        code, text = self.w.cli("--crew-home", self.w.crew, "usage", "export", "--since", "a week")
+        self.assertIn("is not a period", text)
+
+    def test_privacy_settings_apply_to_the_report(self):
+        self.w.session("s1-aaaa", "sid-1", "chat-1", workspace="client-acme")
+        self.w.add_rows(row(1, 1.0, agent="acme-auditor"))
+        with open(self.w.settings_path, "w") as handle:
+            json.dump({"drop_fields": ["workspace"], "hash_fields": ["agent"]}, handle)      # no endpoint needed
+        text, _, page = self.export("--since", "1d")
+        self.assertNotIn("acme", page)
+        self.assertIn("Privacy settings applied: not shown: workspace; hashed: agent", page)
+
+    def test_schedule_report_prints_a_daily_export_job(self):
+        report_dir = os.path.join(self.w.root, "my reports")
+        for kind, needle in (("cron", "10 0 * * * mkdir -p"), ("systemd", "OnCalendar=*-*-* 00:10:00"),
+                             ("launchd", "<key>StartCalendarInterval</key>")):
+            code, out = self.w.cli("usage", "schedule", kind, "--report", "--report-dir", report_dir)
+            self.assertEqual(code, 0)
+            self.assertIn(needle, out)
+            self.assertIn("export", out)
+            self.assertIn("yesterday", out)
+            self.assertIn(report_dir, out)
+            self.assertNotIn("push", out)
+            self.assertNotIn("no endpoint", out)                               # an export needs none
+        cron = self.w.cli("usage", "schedule", "cron", "--report")[1]
+        line = next(l for l in cron.splitlines() if l.startswith("10 0"))
+        self.assertNotIn("%", line)                                            # cron treats % as a newline
+        self.assertIn("Persistent=true", self.w.cli("usage", "schedule", "systemd", "--report")[1])

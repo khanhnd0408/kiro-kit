@@ -70,6 +70,9 @@ crewctl usage push                                   # send what Crew recorded s
 crewctl usage schedule                               # prints the systemd, launchd or cron lines; you add them
 ```
 
+No monitoring stack wanted? `crewctl usage export --since 7d` writes one self-contained HTML report from Crew's files
+(no Docker, no endpoint), and `crewctl usage schedule --report` prints a job that writes yesterday's report every day.
+
 It only reads Crew's usage files, writes nothing under `~/.kiro`, and calls no model. Prompts, responses, paths and error
 text are never sent. The full guide (requirements, your own Victoria stack, several machines, privacy settings, what it
 changes and how to remove it): `crewctl/usage-otel/README.md`.

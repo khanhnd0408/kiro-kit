@@ -151,6 +151,7 @@ Values in `crew/_defaults.json` fill in any field an agent file leaves out. File
 | `import NAME` | Adopt an agent file that already exists. |
 | `state list`, `show`, `rm`, `mv` | Look at or edit the state. |
 | `usage init`, `push`, `status`, `schedule` | Send Kiro Crew's credit usage to an OTLP backend. `push --dry-run` shows exactly what would be sent. See [usage-otel/README.md](usage-otel/README.md). |
+| `usage export` | Write one self-contained HTML report of the credit usage for a period; no monitoring stack needed. `usage schedule --report` prints a daily job for it. |
 
 Useful flags: `--target NAME` (limit to one crewmate), `--force` (overwrite drifted files; a backup is kept), `--agents-dir`, `--crew-home`, `-v` (show notes).
 
@@ -228,7 +229,7 @@ Run those yourself, or use `register --run` when you're ready. `kirocrew agent c
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests          # 313 tests, all in temp folders
+python3 -m unittest discover -s tests          # 318 tests, all in temp folders
 python3 tests/crosscheck_with_crew.py          # asks your installed Crew to load the example files (read-only, sandboxed)
 ```
 
@@ -238,7 +239,7 @@ The tests set `HOME` to a temp folder and use a fake `kirocrew` script, so they 
 
 ```
 crewctl/
-  crewctl/            the program (cli, config, engine, state, mapping, models, models.json; usage and otlp for `crewctl usage`)
+  crewctl/            the program (cli, config, engine, state, mapping, models, models.json; usage, otlp and report for `crewctl usage`)
   templates/          files `init` and `usage init` copy
   usage-otel/         local Victoria stack, Grafana dashboard and demo data for `crewctl usage`
   examples/crew/      three sample crewmates

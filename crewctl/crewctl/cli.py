@@ -709,8 +709,12 @@ def cmd_usage(args):
         settings = _usage_settings(args, out)
         kind = args.scheduler or usage.default_scheduler()
         crew_home = (settings.crew_home if settings is not None else "") if (args.crew_home or os.environ.get("KIROCREW_HOME")) else ""
+        report_dir = os.path.abspath(os.path.expanduser(args.report_dir)) if args.report_dir else usage.default_report_dir()
         print(usage.schedule_text(kind, args.every, path, usage.launcher_path(), usage.python_path(),
-                                  usage.default_state_dir(), crew_home), end="")
+                                  usage.default_state_dir(), crew_home, job="report" if args.report else "push",
+                                  report_dir=report_dir), end="")
+        if args.report:
+            return 0                      # an export needs no endpoint
         if settings is not None and not settings.exists:
             print(out.yellow(f"\nNote: {_tilde(path)} does not exist yet; create it with `crewctl usage init` and set an endpoint."))
         elif settings is not None and not settings.enabled:
@@ -718,6 +722,8 @@ def cmd_usage(args):
         return 0
     if args.usage_action == "status":
         return _usage_status(args, out, path)
+    if args.usage_action == "export":
+        return _usage_export(args, out)
     quiet = args.quiet and not args.dry_run
     settings = _usage_settings(args, out, quiet)
     if settings is None:
@@ -759,6 +765,36 @@ def cmd_usage(args):
     if result.errors:
         print(out.dim("Nothing that failed is lost: the next run sends it again from Crew's files."))
         return 1
+    return 0
+
+
+def _usage_export(args, out):
+    """Write the HTML report. Reads Crew's files; needs no endpoint and writes no state."""
+    from . import report, usage
+    settings = _usage_settings(args, out, quiet=True)
+    if settings is None:
+        return 1
+    if not os.path.isdir(settings.crew_home):
+        print(out.red(f"Crew's data folder {_tilde(settings.crew_home)} does not exist. Use --crew-home, or set \"crew_home\" in usage.json."))
+        return 1
+    try:
+        start, end = report.period(args.since, args.from_day, args.to_day)
+        data = report.collect(settings.crew_home, start, end, settings)
+    except usage.UsageError as error:
+        print(out.red(f"error: {error}"))
+        return 1
+    target = args.output or report.default_filename(start, end)
+    target = os.path.expanduser(target)
+    if target.endswith(("/", os.sep)) or os.path.isdir(target):
+        target = os.path.join(target, report.default_filename(start, end))
+    target = os.path.abspath(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    from .util import atomic_write
+    atomic_write(target, report.render_html(data).encode("utf-8"), mode=0o644)
+    print(f"Wrote {_tilde(target)}: {len(data.turns)} turn(s), {data.credits:.3f} credits, {len(data.runs)} subagent run(s), "
+          f"{start.strftime('%Y-%m-%d %H:%M')} to {end.strftime('%Y-%m-%d %H:%M')}.")
+    if data.unreadable:
+        print(out.yellow(f"{data.unreadable} row(s) could not be read and are left out."))
     return 0
 
 
@@ -1567,9 +1603,16 @@ def build_parser():
     q.add_argument("--max-rows", type=int, metavar="N", help="read at most N usage rows in this run")
     q.add_argument("--break-lock", action="store_true", help="remove a lock left by a push that was cut off")
     usub.add_parser("status", help="settings, last run, last error and how far behind Crew's files the export is")
+    q = usub.add_parser("export", help="write one HTML report of the credit usage (no monitoring stack needed; sends nothing)")
+    q.add_argument("--since", metavar="SPAN", help="the last N hours or days, for example 24h or 7d (default 30d, like Crew's Usage tab)")
+    q.add_argument("--from", dest="from_day", metavar="DAY", help="first day: YYYY-MM-DD, today or yesterday")
+    q.add_argument("--to", dest="to_day", metavar="DAY", help="last day, included (default: the --from day)")
+    q.add_argument("-o", "--output", metavar="PATH", help="the HTML file to write, or a folder ending in / (default: kiro-usage-<period>.html here)")
     q = usub.add_parser("schedule", help="print the cron, systemd or launchd lines that run push every few minutes (installs nothing)")
     q.add_argument("scheduler", nargs="?", choices=["cron", "systemd", "launchd"], help="default: launchd on macOS, systemd on Linux with systemd, else cron")
     q.add_argument("--every", type=_minutes, default=5, metavar="MINUTES", help="minutes between runs, 1 to 60 (default 5)")
+    q.add_argument("--report", action="store_true", help="instead: a daily job at 00:10 that writes yesterday's HTML report (usage export)")
+    q.add_argument("--report-dir", metavar="FOLDER", help="with --report: where the daily reports go (default ~/kiro-usage-reports)")
     for q in usub.choices.values():
         q.add_argument("--settings", metavar="FILE", help="the settings file (default: $CREWCTL_USAGE_CONFIG or ~/.config/crewctl/usage.json)")
     p.set_defaults(func=cmd_usage)
