@@ -1,0 +1,1179 @@
+{
+  "uid": "kiro-crew-usage",
+  "title": "Kiro Crew usage",
+  "tags": [
+    "kiro",
+    "crewctl",
+    "usage"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "description": "Kiro Crew credit usage sent by `crewctl usage push` (kiro-kit). Metrics: kiro_credits_total and friends. Logs: one record per billed turn and per subagent run.",
+  "templating": {
+    "list": [
+      {
+        "name": "metrics",
+        "label": "Metrics",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "hide": 0
+      },
+      {
+        "name": "logs",
+        "label": "Logs",
+        "type": "datasource",
+        "query": "victoriametrics-logs-datasource",
+        "refresh": 1,
+        "hide": 0
+      },
+      {
+        "name": "agent",
+        "label": "Agent",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics}"
+        },
+        "query": {
+          "query": "label_values(kiro_credits_total, agent)",
+          "refId": "agent"
+        },
+        "definition": "label_values(kiro_credits_total, agent)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics}"
+        },
+        "query": {
+          "query": "label_values(kiro_credits_total, model)",
+          "refId": "model"
+        },
+        "definition": "label_values(kiro_credits_total, model)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "workspace",
+        "label": "Workspace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics}"
+        },
+        "query": {
+          "query": "label_values(kiro_credits_total, workspace)",
+          "refId": "workspace"
+        },
+        "definition": "label_values(kiro_credits_total, workspace)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Credits (from the kiro_*_total counters)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Credits in range",
+      "description": "Every billed turn: chat, subagents, background and automation.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Billed turns",
+      "description": "",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sum (max_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Subagent share",
+      "description": "",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sum (max_over_time(kiro_credits_total{kind=\"subagent\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"subagent\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Background share",
+      "description": "Crew's own background jobs (tips, suggestions, titles, memory). Not caused by a chat.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sum (max_over_time(kiro_credits_total{kind=\"background\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{kind=\"background\", agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Burn rate (credits in the last hour)",
+      "description": "",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sum (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[1h]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Last push",
+      "description": "Seconds since `crewctl usage push` last ran. Red: the scheduler stopped or cannot reach this backend.",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "time() - max(max_over_time(kiro_usage_last_push_timestamp_seconds[1d]))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 900
+              },
+              {
+                "color": "red",
+                "value": 3600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Credits over time, by kind",
+      "description": "From the log records: each turn at the time it finished. chat = you and messaging channels; subagent; background; automation = cron, heartbeat, workflow.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "queryType": "statsRange",
+          "legendFormat": "{{kind}}",
+          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (kind:\"\") \"(none)\" as kind | stats by (kind) sum(credits) as credits"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Credits over time, by agent",
+      "description": "From the log records: each turn at the time it finished. ",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "queryType": "statsRange",
+          "legendFormat": "{{agent}}",
+          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) sum(credits) as credits"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 9
+    },
+    {
+      "type": "bargauge",
+      "title": "Credits by agent",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sort_desc(label_replace(sum by (agent) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"))",
+          "legendFormat": "{{agent}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 10
+    },
+    {
+      "type": "bargauge",
+      "title": "Credits by model",
+      "description": "",
+      "gridPos": {
+        "x": 8,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sort_desc(label_replace(sum by (model) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"model\", \"(none)\", \"model\", \"\"))",
+          "legendFormat": "{{model}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 11
+    },
+    {
+      "type": "bargauge",
+      "title": "Credits by workspace",
+      "description": "",
+      "gridPos": {
+        "x": 16,
+        "y": 13,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sort_desc(label_replace(sum by (workspace) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"workspace\", \"(none)\", \"workspace\", \"\"))",
+          "legendFormat": "{{workspace}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 12
+    },
+    {
+      "type": "table",
+      "title": "Credits by surface",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "sort_desc(sum by (kind, surface) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])))",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "credits"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "credits",
+            "desc": true
+          }
+        ]
+      },
+      "id": 13
+    },
+    {
+      "type": "table",
+      "title": "Average credits per turn, by agent and model",
+      "description": "",
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics}"
+          },
+          "expr": "label_replace(label_replace(sum by (agent, model) (max_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_credits_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])) / sum by (agent, model) (max_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range]) - min_over_time(kiro_turns_total{agent=~\"$agent\", workspace=~\"$workspace\", model=~\"$model\"}[$__range])), \"agent\", \"(none)\", \"agent\", \"\"), \"model\", \"(none)\", \"model\", \"\")",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "credits"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "credits",
+            "desc": true
+          }
+        ]
+      },
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "Sessions and subagents (from the log records)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "id": 15
+    },
+    {
+      "type": "table",
+      "title": "Top sessions, with the subagents they spawned",
+      "description": "root_session_key is the chat a turn belongs to; a subagent's spend counts toward the chat that spawned it.",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 14,
+        "h": 9
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "expr": "{service.name=\"kiro-crew\"} event:=turn root_session_key:* agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (workspace:\"\") \"(none)\" as workspace | stats by (root_session_key, root_session_id, workspace) sum(credits) as credits | sort by (credits desc) | limit 20",
+          "queryType": "stats",
+          "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "Value": "credits"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "credits",
+            "desc": true
+          }
+        ]
+      },
+      "id": 16
+    },
+    {
+      "type": "table",
+      "title": "Subagent spend per orchestrator session",
+      "description": "",
+      "gridPos": {
+        "x": 14,
+        "y": 31,
+        "w": 10,
+        "h": 9
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "expr": "{service.name=\"kiro-crew\"} event:=turn kind:=subagent agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (root_session_key, agent) sum(credits) as credits | sort by (credits desc) | limit 30",
+          "queryType": "stats",
+          "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "Value": "credits"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "credits",
+            "desc": true
+          }
+        ]
+      },
+      "id": 17
+    },
+    {
+      "type": "table",
+      "title": "Subagent runs by outcome",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "expr": "{service.name=\"kiro-crew\"} event:=subagent_run agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent, outcome) count() as runs",
+          "queryType": "stats",
+          "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "Value": "runs"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "runs",
+            "desc": true
+          }
+        ]
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "Context used (max %, by agent)",
+      "description": "How full each agent's context window was. Near 100% means compaction and expensive turns.",
+      "gridPos": {
+        "x": 8,
+        "y": 40,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "expr": "{service.name=\"kiro-crew\"} event:=turn agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | format if (agent:\"\") \"(none)\" as agent | stats by (agent) max(context_pct) as context_pct",
+          "queryType": "statsRange",
+          "legendFormat": "{{agent}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 19
+    },
+    {
+      "type": "logs",
+      "title": "Latest turns and subagent runs",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs}"
+          },
+          "expr": "{service.name=\"kiro-crew\"} agent:~\"$agent\" workspace:~\"$workspace\" model:~\"$model\" | sort by (_time desc)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "id": 20
+    }
+  ]
+}

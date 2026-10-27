@@ -1,0 +1,15 @@
+# Grafana data sources for the local test stack. VictoriaMetrics answers PromQL, so it uses Grafana's
+# built-in Prometheus data source; VictoriaLogs needs the victoriametrics-logs-datasource plugin.
+apiVersion: 1
+datasources:
+  - name: VictoriaMetrics
+    type: prometheus
+    uid: victoriametrics
+    url: http://victoriametrics:8428
+    access: proxy
+    isDefault: true
+  - name: VictoriaLogs
+    type: victoriametrics-logs-datasource
+    uid: victorialogs
+    url: http://victorialogs:9428
+    access: proxy

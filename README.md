@@ -1,11 +1,12 @@
 # kiro-kit
 
-One command, `crewctl`, for two separate jobs. Pick the job, then the command.
+One command, `crewctl`, for three separate jobs. Pick the job, then the command.
 
 | I want to... | Job | Start here |
 |---|---|---|
 | Create and manage a team of Kiro Crew agents (crewmates) from JSON files | **Crew** | `crewctl/crews/devteam/SETUP.md` (ten ready-made crewmates) or `crewctl/README.md` |
 | Review a project's prompts and agents against the Codex and Claude Code patterns (a structured analysis with scorecards and verified findings) | **Review** | `aiops/README.md` |
+| See Kiro Crew's credit usage per agent, model, workspace and session in Grafana (VictoriaMetrics + VictoriaLogs, over OTLP) | **Usage** | `crewctl/usage-otel/README.md` |
 
 ## Install the command (once)
 
@@ -13,7 +14,7 @@ On the machine where you will use it, from this folder:
 
 ```bash
 ./install.sh            # links bin/crewctl as ~/.local/bin/crewctl
-crewctl                 # prints the overview of the two jobs
+crewctl                 # prints the overview of the three jobs
 ```
 
 There is nothing to pip-install and no virtual environment: crewctl uses only Python's standard library and runs with whichever `python3` is on your PATH when you run it (conda, a venv, the system Python). Set `CREWCTL_PYTHON=/path/to/python` to choose another. If the script says to add `~/.local/bin` to your PATH, do that and open a new terminal. Keep the repository where it is. `./install.sh --uninstall` removes the link. Needs Python 3.8 or newer.
@@ -50,11 +51,24 @@ crewctl review check /path/to/your/project      # re-check every file:line citat
 
 `--reference-source` is a clone of the public `system_prompts_leaks` repository, which the review quotes. The crew job does not need it. After installing, follow `aiops/README.md`: it says how to start the review in Kiro Crew or in the IDE.
 
+## Job 3: credit usage in Grafana
+
+```bash
+cd crewctl/usage-otel && docker compose up -d   # optional local stack: OTel Collector, VictoriaMetrics, VictoriaLogs, Grafana
+crewctl usage init                              # ~/.config/crewctl/usage.json; set "endpoint": "http://localhost:4318"
+crewctl usage push --dry-run                    # exactly what would be sent; sends nothing
+crewctl usage push                              # send what Crew recorded since the last run, then exit
+crewctl usage schedule                          # the cron, systemd or launchd lines that run it every few minutes
+```
+
+It only reads Crew's usage files and calls no model. Prompts, responses, paths and error text are never sent. Details, privacy settings and the dashboard: `crewctl/usage-otel/README.md`.
+
 ## All commands
 
 ```
 Crew:    init  validate  plan  apply  destroy  status  register  skills  lint-skills  models  workspace  mcp  crew-servers  import  state
 Review:  review install  |  review check  |  review where
+Usage:   usage init  |  usage push  |  usage status  |  usage schedule
 ```
 
 `crewctl <command> --help` shows the options of one command.
@@ -63,5 +77,5 @@ Review:  review install  |  review check  |  review where
 
 | Folder | What it holds |
 |---|---|
-| `crewctl/` | The command itself, the ready-made `crews/devteam` team, docs and tests. |
+| `crewctl/` | The command itself, the ready-made `crews/devteam` team, the usage stack and dashboard (`usage-otel/`), docs and tests. |
 | `aiops/` | The review kit that `crewctl review install` copies into a project: method documents, helper scripts and adapters for Crew and the IDE. |

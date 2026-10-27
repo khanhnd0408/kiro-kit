@@ -1,0 +1,7 @@
+# Loads the Kiro Crew usage dashboard at start.
+apiVersion: 1
+providers:
+  - name: "Kiro Crew usage"
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

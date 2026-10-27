@@ -51,6 +51,12 @@ JOBS = [
         ("crewctl review check", "[PROJECT]", "re-check every file:line citation in the review output"),
         ("crewctl review where", "", "show where the review kit is"),
     ]),
+    ("JOB 3. Watch credit usage: send Kiro Crew's usage to Grafana or any OTLP backend", [
+        ("crewctl usage init", "[--force]", "create ~/.config/crewctl/usage.json; export stays off until it has an endpoint"),
+        ("crewctl usage push", "[--dry-run] [--quiet] [--max-rows N]", "send what Crew recorded since the last run, then exit"),
+        ("crewctl usage status", "", "settings, last run, last error, and what is not sent yet"),
+        ("crewctl usage schedule", "[cron|systemd|launchd] [--every MINUTES]", "print the lines that run push every few minutes"),
+    ]),
 ]
 
 GLOBAL_OPTIONS = [
@@ -125,7 +131,7 @@ def visible_len(text):
 
 def render_overview(color, width=58):
     lines = []
-    lines.append(paint("head", "crewctl", color) + " does two jobs. Pick the job first, then the command.")
+    lines.append(paint("head", "crewctl", color) + " does three jobs. Pick the job first, then the command.")
     lines.append("Colors: " + paint("cmd", "command", color) + "  " + paint("opt", "--option", color) + "  "
                  + paint("param", "PARAM", color) + "  description")
     for title, entries in JOBS:

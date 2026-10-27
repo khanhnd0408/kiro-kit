@@ -1,0 +1,170 @@
+<mxfile host="Electron">
+  <diagram name="Usage export (proposal)" id="usage-otel-arch">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2260" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="&lt;b&gt;crewctl usage push: Kiro Crew credit usage to OTLP (as built)&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="1100" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Kiro machine -->
+        <mxCell id="machine" value="Kiro machine: runs as your user, no root, no daemon" style="swimlane;startSize=30;html=1;fillColor=#ffffff;strokeColor=#333333;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="20" y="60" width="1160" height="780" as="geometry" />
+        </mxCell>
+
+        <!-- Crew (unchanged) -->
+        <mxCell id="crew" value="Kiro Crew 0.10.0 (unchanged, we only read its files)" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="machine">
+          <mxGeometry x="20" y="50" width="360" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway" value="&lt;b&gt;Crew gateway&lt;/b&gt;&lt;br&gt;chat turns · subagents · background jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="crew">
+          <mxGeometry x="30" y="50" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="crewlog" value="&lt;b&gt;crew-log/sessions/&amp;lt;sid&amp;gt;/log*.jsonl&lt;/b&gt; (joins)&lt;br&gt;session header: session id, slot, agent&lt;br&gt;session/opened: workspace&lt;br&gt;subagent/spawned: which session spawned it&lt;br&gt;subagent/completed, failed: one subagent_run record" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=0.15;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" vertex="1" parent="crew">
+          <mxGeometry x="30" y="170" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="usagejsonl" value="&lt;b&gt;usage/tokens/&amp;lt;date&amp;gt;.jsonl&lt;/b&gt; (MAIN SOURCE)&lt;br&gt;one row per billed turn, every surface: the only source of credit amounts" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=0.15;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" vertex="1" parent="crew">
+          <mxGeometry x="30" y="330" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="builtin" value="&lt;b&gt;Not used:&lt;/b&gt; Crew built-in OTLP&lt;br&gt;runs inside the gateway, needs a root install,&lt;br&gt;credit metric has model labels only" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="crew">
+          <mxGeometry x="30" y="430" width="300" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Scheduler -->
+        <mxCell id="sched" value="&lt;b&gt;Scheduler (user level)&lt;/b&gt;&lt;br&gt;cron · systemd --user timer · launchd" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="machine">
+          <mxGeometry x="420" y="50" width="300" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Exporter -->
+        <mxCell id="exporter" value="crewctl usage push: one run, then exit (nice, time limit, about 15 MB)" style="swimlane;startSize=30;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="machine">
+          <mxGeometry x="420" y="170" width="720" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="read" value="&lt;b&gt;1. Read&lt;/b&gt;&lt;br&gt;both sources, new lines since each file's offset; read-only; a half-written line waits" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="15" y="60" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="filter" value="&lt;b&gt;2. Join + filter&lt;/b&gt;&lt;br&gt;session, workspace, parent of a subagent; allowlist; drop / hash fields" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="195" y="60" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="encode" value="&lt;b&gt;3. Encode&lt;/b&gt;&lt;br&gt;OTLP protobuf, gzip; logs in time order; cumulative counters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="375" y="60" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="send" value="&lt;b&gt;4. Send + commit&lt;/b&gt;&lt;br&gt;≤1,000 records per request; offsets move only after a send works" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="555" y="60" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="state" value="&lt;b&gt;Local state&lt;/b&gt;&lt;br&gt;~/.local/state/crewctl/usage&lt;br&gt;offsets, counters, sent run ids, hash key" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=12;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="15" y="250" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="config" value="&lt;b&gt;~/.config/crewctl/usage.json&lt;/b&gt;&lt;br&gt;endpoint (empty = off), drop / hash fields, headers file (0600)" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=0.15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="225" y="250" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="dryrun" value="&lt;b&gt;--dry-run&lt;/b&gt;&lt;br&gt;prints the exact payload, sends nothing (for the client's security review)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="exporter">
+          <mxGeometry x="450" y="250" width="200" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Guarantees -->
+        <mxCell id="guarantees" value="&lt;b&gt;Guarantees&lt;/b&gt;&lt;br&gt;• Read-only on ~/.kiro/crew: no writes, no locks. A crash or hang in the exporter never affects Crew.&lt;br&gt;• Bounded: at most 1,000 records per request, network timeout, time limit per run. No queue: Crew's own files are the buffer. Between runs nothing is resident.&lt;br&gt;• Calls no model: zero credits. Off until an endpoint is set.&lt;br&gt;• Never sent: prompt or response text, file paths, cwd, auth tokens. Session ids go on log records only, never as metric labels.&lt;br&gt;• A row it cannot read is skipped and counted; if most rows of a file are unreadable (Crew changed the format) it stops and says so. Each credit is counted once." style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#ffffff;strokeColor=#999999;fontSize=12;" vertex="1" parent="machine">
+          <mxGeometry x="20" y="600" width="1120" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- Backend -->
+        <mxCell id="backend" value="Victoria stack (OTLP): inside the client's network, or an endpoint the client approved" style="swimlane;startSize=30;html=1;fillColor=#ffffff;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="60" width="900" height="780" as="geometry" />
+        </mxCell>
+        <mxCell id="collector" value="&lt;b&gt;OpenTelemetry Collector&lt;/b&gt;&lt;br&gt;OTLP/HTTP :4318; metrics to VictoriaMetrics, logs to VictoriaLogs. Optional: crewctl can send to both directly" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="backend">
+          <mxGeometry x="30" y="220" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="vlogs" value="&lt;b&gt;VictoriaLogs&lt;/b&gt;&lt;br&gt;one record per turn and per subagent run:&lt;br&gt;session, root / parent session, agent, model, credits, context" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=12;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="backend">
+          <mxGeometry x="290" y="120" width="270" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="vmetrics" value="&lt;b&gt;VictoriaMetrics&lt;/b&gt;&lt;br&gt;kiro_credits_total, kiro_turns_total, last push&lt;br&gt;labels: kind, surface, model, provider, agent, workspace" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=12;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="backend">
+          <mxGeometry x="290" y="360" width="270" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" value="&lt;b&gt;Grafana: Kiro Crew usage&lt;/b&gt;&lt;br&gt;(+ VictoriaLogs plugin)&lt;br&gt;&lt;br&gt;credits by agent and model&lt;br&gt;top sessions&lt;br&gt;user vs subagent vs background spend&lt;br&gt;subagent cost per orchestrator session&lt;br&gt;context pressure&lt;br&gt;burn rate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="backend">
+          <mxGeometry x="620" y="120" width="250" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;Solid arrow: always on. Dashed arrow or box: optional.&lt;br&gt;Red box: considered and rejected.&lt;br&gt;Grey: Kiro Crew's own files and process, which we never change.&lt;br&gt;&lt;br&gt;&lt;b&gt;Settled&lt;/b&gt;&lt;br&gt;• Backend: VictoriaMetrics + VictoriaLogs, OpenTelemetry Collector in front (local stack: usage-otel/docker-compose.yml)&lt;br&gt;• Names are sent as they are unless listed in hash_fields or drop_fields&lt;br&gt;• Scheduler: `crewctl usage schedule` prints cron, systemd or launchd lines; installs nothing&lt;br&gt;• Still yours to decide: where the endpoint lives (client network or approved external)" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=10;fillColor=#ffffff;strokeColor=#999999;fontSize=12;" vertex="1" parent="backend">
+          <mxGeometry x="30" y="540" width="840" height="220" as="geometry" />
+        </mxCell>
+
+        <!-- Edges: Crew -->
+        <mxCell id="e_gw_log" value="appends" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=10;labelBackgroundColor=#f5f5f5;" edge="1" parent="1" source="gateway" target="crewlog">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_gw_usage" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="gateway" target="usagejsonl">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="50" y="195" />
+              <mxPoint x="50" y="475" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Edges: scheduler and sources -->
+        <mxCell id="e_sched" value="starts it every 1 to 5 min" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.2083;entryY=0;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="sched" target="exporter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_log_read" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="crewlog" target="read">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_usage_read" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.8;strokeWidth=2;" edge="1" parent="1" source="usagejsonl" target="read">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="475" />
+              <mxPoint x="420" y="370" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Edges: pipeline -->
+        <mxCell id="e_read_filter" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="read" target="filter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_filter_encode" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="filter" target="encode">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_encode_send" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="encode" target="send">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_read_state" value="offset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.4167;entryY=0;startArrow=classic;fontSize=10;labelBackgroundColor=#dae8fc;" edge="1" parent="1" source="read" target="state">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_config_filter" value="settings" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.3056;exitY=0;entryX=0.5667;entryY=1;fontSize=10;labelBackgroundColor=#dae8fc;" edge="1" parent="1" source="config" target="filter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_encode_dry" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.7667;exitY=1;entryX=0.2;entryY=0;dashed=1;" edge="1" parent="1" source="encode" target="dryrun">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Edges: to backend -->
+        <mxCell id="e_send_coll" value="OTLP/HTTP, gzip, HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="send" target="collector">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="0" y="0" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_coll_vlogs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;entryX=0;entryY=0.5;" edge="1" parent="1" source="collector" target="vlogs">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1580" y="310" />
+              <mxPoint x="1580" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_coll_vmetrics" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" edge="1" parent="1" source="collector" target="vmetrics">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1580" y="370" />
+              <mxPoint x="1580" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_vlogs_graf" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.1667;" edge="1" parent="1" source="vlogs" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vmetrics_graf" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.8333;" edge="1" parent="1" source="vmetrics" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

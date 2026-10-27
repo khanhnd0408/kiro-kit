@@ -1,0 +1,24 @@
+# OpenTelemetry Collector for the local test stack: receives OTLP/HTTP from `crewctl usage push` and forwards
+# metrics to VictoriaMetrics and logs to VictoriaLogs. Both receive OTLP protobuf; the exporter sends gzip.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlphttp/victoriametrics:
+    metrics_endpoint: http://victoriametrics:8428/opentelemetry/v1/metrics
+    compression: gzip
+  otlphttp/victorialogs:
+    logs_endpoint: http://victorialogs:9428/insert/opentelemetry/v1/logs
+    compression: gzip
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [otlphttp/victoriametrics]
+    logs:
+      receivers: [otlp]
+      exporters: [otlphttp/victorialogs]

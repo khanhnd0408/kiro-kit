@@ -1,0 +1,22 @@
+{
+  "_comment": "Settings for `crewctl usage push`, which sends Kiro Crew's credit usage to an OTLP backend. Export is OFF while every endpoint is empty. Run `crewctl usage push --dry-run` to see exactly what would be sent.",
+  "_endpoint_comment": "endpoint: the base URL of an OTLP/HTTP receiver (an OpenTelemetry Collector, Grafana Alloy, grafana/otel-lgtm, Grafana Cloud). Logs go to <endpoint>/v1/logs and metrics to <endpoint>/v1/metrics. For VictoriaLogs and VictoriaMetrics, leave endpoint empty and set the two full URLs instead: http://HOST:9428/insert/opentelemetry/v1/logs and http://HOST:8428/opentelemetry/v1/metrics.",
+  "endpoint": "",
+  "logs_endpoint": "",
+  "metrics_endpoint": "",
+  "signals": ["logs", "metrics"],
+  "_auth_comment": "headers_file: a file only you can read (chmod 600) with one 'Header-Name: value' per line, for example 'Authorization: Bearer ...'. It is refused if other users can read it, and over plain http to another machine unless allow_insecure_http is true.",
+  "headers_file": "",
+  "allow_insecure_http": false,
+  "_resource_comment": "resource_attributes: a few labels for this machine, for example {\"deployment.environment\": \"client-a\", \"service.instance.id\": \"laptop-1\"}. service.name is kiro-crew unless you set it here.",
+  "resource_attributes": {},
+  "_privacy_comment": "drop_fields: never send these. Allowed: agent, workspace, app, session_key, session_id, parent_session_key, parent_session_id, subagent_id, stop_reason, context. hash_fields: send a keyed hash instead of the name (the key stays in the local state folder). Allowed: agent, workspace, app, session_key, session_id, parent_session_key, parent_session_id, subagent_id. Prompt and response text, file paths, cwd and error text are never sent.",
+  "drop_fields": [],
+  "hash_fields": [],
+  "_limits_comment": "backfill_days: on the first run, usage files older than this are skipped (Loki refuses records older than 7 days by default). The other limits keep each run small.",
+  "backfill_days": 3,
+  "max_rows_per_request": 1000,
+  "max_rows_per_run": 20000,
+  "timeout_seconds": 10,
+  "time_limit_seconds": 120
+}
