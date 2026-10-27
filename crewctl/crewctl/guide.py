@@ -24,6 +24,10 @@ IMPACT = {
     "crew": ("CHANGES CREW", "Changes Crew itself: it runs `kirocrew` commands that create, update or delete records or workspaces."),
     "program": ("STARTS A PROGRAM", "Starts or calls a program from your mcp.json to read its tool list, then stops it."),
     "install": ("COPIES FILES INTO A PROJECT", "Copies the review kit into a project folder and into ~/.kiro-agent-review."),
+    "usage-settings": ("WRITES ONE SETTINGS FILE", "Creates ~/.config/crewctl/usage.json (or the --settings file). Changes nothing else."),
+    "report": ("WRITES ONE REPORT FILE", "Writes one HTML file (by default in the current folder). Reads Crew's usage files; sends nothing."),
+    "send": ("SENDS USAGE DATA", "Reads Crew's usage files (never writes them) and sends credit usage to the endpoint in usage.json. "
+                                 "Writes only its own state in ~/.local/state/crewctl/usage."),
 }
 
 # command -> (impact, what it does, words people use for it). Keys are the command words; `skills` is split by action.
@@ -59,6 +63,11 @@ INFO = {
     ("review", "install"): ("install", "Installs the agent-review kit (method documents and helper scripts) into a project.", "review compare prompts patterns install"),
     ("review", "check"): ("read", "Re-checks every file:line citation in a project's review output.", "review citations check"),
     ("review", "where"): ("read", "Shows where the review kit is.", "review kit location"),
+    ("usage", "init"): ("usage-settings", "Creates usage.json from the template. Export stays off until you set an endpoint in it.", "usage telemetry otel otlp grafana monitoring credits setup settings"),
+    ("usage", "push"): ("send", "Sends what Crew recorded since the last run (credits per turn, subagent runs, counters) to the OTLP endpoint, then exits. With --dry-run it shows the exact records and sends nothing.", "usage telemetry otel otlp grafana send export push credits metrics logs dashboard"),
+    ("usage", "status"): ("read", "Shows the usage export settings, the last run, the last error and how much of Crew's usage files is not sent yet.", "usage telemetry status last error behind credits"),
+    ("usage", "schedule"): ("read", "Prints the cron, systemd or launchd lines that run `usage push` every few minutes, or with --report a daily HTML report. Installs nothing.", "usage telemetry schedule cron timer systemd launchd every minutes daily report"),
+    ("usage", "export"): ("report", "Writes one self-contained HTML report of the credit usage (by kind, agent, model, workspace, session and subagent) for a period. No monitoring stack needed; sends nothing.", "usage report export html credits summary spend cost daily weekly monthly file without grafana"),
 }
 
 # What choosing an option adds. Falls back to the option's own help text. Keyed by option dest.
@@ -81,6 +90,14 @@ EFFECTS = {
     "timeout": "Seconds to wait for the server to answer.",
     "detailed_exitcode": "Exit code 2 when there are changes (for scripts and CI).",
     "show": "Prints the SKILL.md that would be written.",
+    "dry_run": "Reads Crew's files and prints exactly what would be sent, decoded. Sends nothing and does not move the read positions.",
+    "quiet": "Prints only errors, for cron and timers.",
+    "settings": "Uses this settings file instead of ~/.config/crewctl/usage.json.",
+    "since": "The report covers the last N hours or days (24h, 7d). Default 30 days.",
+    "from_day": "The report starts at the beginning of this day (YYYY-MM-DD, today or yesterday).",
+    "to_day": "The report ends at the end of this day (included).",
+    "output": "Where the HTML file goes. A folder ending in / gets a file named after the period.",
+    "report": "Prints a daily job that writes yesterday's HTML report instead of the push job.",
 }
 
 # Where the values for an argument can come from.

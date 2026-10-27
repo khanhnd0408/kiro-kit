@@ -2,7 +2,7 @@
 
 Manage Kiro Crew agents from JSON files, with Terraform-style state.
 
-`crewctl` also installs the agent-review kit into a project (`crewctl review install ...`). That is a separate job from creating the crew; see the [repository README](../README.md) for which command belongs to which. Run `crewctl` with no arguments for the overview.
+`crewctl` also installs the agent-review kit into a project (`crewctl review install ...`), and sends Kiro Crew's credit usage to Grafana or any OTLP backend (`crewctl usage ...`, see [usage-otel/README.md](usage-otel/README.md)). Those are separate jobs from creating the crew; see the [repository README](../README.md) for which command belongs to which. Run `crewctl` with no arguments for the overview.
 
 You write one small JSON file per crewmate. crewctl turns each one into the Kiro agent file that Crew uses (`~/.kiro/agents/<name>.json`), remembers what it wrote, and tells you if anything changes outside it. It never starts `kiro-cli`, the Crew gateway or a model, so it costs no credits.
 
@@ -12,8 +12,9 @@ You write one small JSON file per crewmate. crewctl turns each one into the Kiro
 - A ready-made ten-crewmate team (orchestrator, GenAI, ML/DL, architecture, Python, Go, Rust, DevSecOps, incident inspector, spec writer): [crews/devteam/README.md](crews/devteam/README.md)
 - Saving credits with cheap reader agents and scheduled collection: [docs/saving-credits.md](docs/saving-credits.md)
 - Which model to give which agent, with credit costs: [docs/model-notes.md](docs/model-notes.md)
+- Credit usage per agent, model, workspace and session in Grafana (VictoriaMetrics + VictoriaLogs): [usage-otel/README.md](usage-otel/README.md)
 
-Python 3, standard library only. Tested on 3.12 and 3.13. The code parses as Python 3.8 but has not been run on it.
+Python 3, standard library only. The tests pass on 3.8, 3.12 and 3.13.
 
 **Not sure which command? Ask `crewctl guide`.** It builds a command with you, one choice at a time, and nothing runs until you say so:
 ```bash
@@ -149,6 +150,8 @@ Values in `crew/_defaults.json` fill in any field an agent file leaves out. File
 | `register` | Print the `kirocrew` commands still needed (create the record, then set its display name, description and triggers). `--run` runs them. |
 | `import NAME` | Adopt an agent file that already exists. |
 | `state list`, `show`, `rm`, `mv` | Look at or edit the state. |
+| `usage init`, `push`, `status`, `schedule` | Send Kiro Crew's credit usage to an OTLP backend. `push --dry-run` shows exactly what would be sent. See [usage-otel/README.md](usage-otel/README.md). |
+| `usage export` | Write one self-contained HTML report of the credit usage for a period; no monitoring stack needed. `usage schedule --report` prints a daily job for it. |
 
 Useful flags: `--target NAME` (limit to one crewmate), `--force` (overwrite drifted files; a backup is kept), `--agents-dir`, `--crew-home`, `-v` (show notes).
 
@@ -226,7 +229,7 @@ Run those yourself, or use `register --run` when you're ready. `kirocrew agent c
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests          # 109 tests, all in temp folders
+python3 -m unittest discover -s tests          # 318 tests, all in temp folders
 python3 tests/crosscheck_with_crew.py          # asks your installed Crew to load the example files (read-only, sandboxed)
 ```
 
@@ -236,8 +239,9 @@ The tests set `HOME` to a temp folder and use a fake `kirocrew` script, so they 
 
 ```
 crewctl/
-  crewctl/            the program (cli, config, engine, state, mapping, models, models.json)
-  templates/          files `init` copies
+  crewctl/            the program (cli, config, engine, state, mapping, models, models.json; usage, otlp and report for `crewctl usage`)
+  templates/          files `init` and `usage init` copy
+  usage-otel/         local Victoria stack, Grafana dashboard and demo data for `crewctl usage`
   examples/crew/      three sample crewmates
   docs/               how crewmates work, model notes, skills guide
   tests/

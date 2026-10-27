@@ -1,4 +1,4 @@
-"""Command-line interface: init, validate, models, plan, apply, destroy, status, register, import, state."""
+"""Command-line interface: init, validate, models, plan, apply, destroy, status, register, import, state, usage, ..."""
 
 import argparse
 import dataclasses
@@ -622,6 +622,222 @@ def cmd_review(args):
 
 def cmd_overview(args):
     print(render_overview(_out(args).color))
+    return 0
+
+
+def _usage_settings(args, out, quiet=False):
+    """Load usage.json and print its problems. Returns the settings, or None when there are errors."""
+    from . import usage
+    path = os.path.abspath(os.path.expanduser(args.settings)) if args.settings else usage.default_settings_path()
+    settings, errors, warnings = usage.load_usage_settings(path, args.crew_home or "")
+    for message in errors:
+        print(out.red(f"error: {_tilde(path)}: {message}"))
+    if not quiet:
+        for message in warnings:
+            print(out.yellow(f"warning: {message}"))
+    return None if errors else settings
+
+
+def _usage_summary(result, settings, out, dry_run):
+    noun = "Would send" if dry_run else "Sent"
+    if settings.logs_url:
+        print(f"{noun} {result.turns} turn record(s) ({result.credits:.3f} credits) and {result.subagent_runs} subagent run(s) "
+              f"to {settings.logs_url}")
+    elif result.turns:
+        print(f"Counted {result.turns} turn(s) ({result.credits:.3f} credits) into the metrics; log records are off (signals).")
+    if settings.metrics_url:
+        print(f"{noun} {result.series} metric series to {settings.metrics_url}")
+    if result.skipped_old_files:
+        print(out.dim(f"Skipped {result.skipped_old_files} usage file(s) older than backfill_days ({settings.backfill_days}); "
+                      "their rows are never sent."))
+    if result.unreadable:
+        print(out.yellow(f"{result.unreadable} row(s) could not be read and were skipped. Example: {result.unreadable_example}"))
+    if result.stopped:
+        print(out.yellow(f"Stopped early: {result.stopped}."))
+    if result.more_left:
+        print(out.dim("More rows are waiting; the next run continues where this one stopped."))
+
+
+def _usage_preview(result, out):
+    print(out.bold("\nFirst log records (exactly what is sent, decoded):"))
+    if not result.preview_logs:
+        print("  (none)")
+    for record in result.preview_logs:
+        stamp = time_text(record["time_ns"])
+        print(f"  {stamp}  {record['body']}")
+        print(out.dim(f"      {json.dumps(record['attributes'], ensure_ascii=False, sort_keys=True)}"))
+    if result.preview_metrics:
+        print(out.bold("\nMetric series (the value each would have after this run):"))
+        shown = 0
+        for metric in result.preview_metrics:
+            latest = {}
+            for point in metric["points"]:
+                latest[json.dumps(point["attributes"], sort_keys=True)] = point
+            for labels, point in sorted(latest.items()):
+                if shown >= 20:
+                    break
+                value = point["value"]
+                text = f"{value:.3f}" if isinstance(value, float) else str(value)
+                print(f"  {metric['name']}{labels} {text}")
+                shown += 1
+        total = sum(len({json.dumps(p['attributes'], sort_keys=True) for p in m["points"]}) for m in result.preview_metrics)
+        if total > shown:
+            print(out.dim(f"  ... and {total - shown} more"))
+
+
+def time_text(time_ns):
+    import datetime
+    return datetime.datetime.fromtimestamp(time_ns / 1e9).astimezone().isoformat(timespec="seconds")
+
+
+def cmd_usage(args):
+    """Send Kiro Crew's credit usage to an OTLP backend (Grafana, VictoriaMetrics, ...), and the helpers around it."""
+    from . import usage
+    out = _out(args)
+    path = os.path.abspath(os.path.expanduser(args.settings)) if args.settings else usage.default_settings_path()
+    if args.usage_action == "init":
+        if os.path.exists(path) and not args.force:
+            print(out.red(f"{_tilde(path)} already exists. Edit it, or use --force to start again from the template."))
+            return 1
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        shutil.copyfile(os.path.join(TEMPLATES, "usage.json"), path)
+        print(f"Created {_tilde(path)}. Export stays off until you set an endpoint in it.")
+        print(out.dim("Next: set \"endpoint\" (or logs_endpoint and metrics_endpoint), run `crewctl usage push --dry-run` to see "
+                      "exactly what would be sent, then `crewctl usage schedule` for the line that runs it every few minutes."))
+        return 0
+    if args.usage_action == "schedule":
+        settings = _usage_settings(args, out)
+        kind = args.scheduler or usage.default_scheduler()
+        crew_home = (settings.crew_home if settings is not None else "") if (args.crew_home or os.environ.get("KIROCREW_HOME")) else ""
+        report_dir = os.path.abspath(os.path.expanduser(args.report_dir)) if args.report_dir else usage.default_report_dir()
+        print(usage.schedule_text(kind, args.every, path, usage.launcher_path(), usage.python_path(),
+                                  usage.default_state_dir(), crew_home, job="report" if args.report else "push",
+                                  report_dir=report_dir), end="")
+        if args.report:
+            return 0                      # an export needs no endpoint
+        if settings is not None and not settings.exists:
+            print(out.yellow(f"\nNote: {_tilde(path)} does not exist yet; create it with `crewctl usage init` and set an endpoint."))
+        elif settings is not None and not settings.enabled:
+            print(out.yellow(f"\nNote: {_tilde(path)} has no endpoint yet, so each run would only say that export is off."))
+        return 0
+    if args.usage_action == "status":
+        return _usage_status(args, out, path)
+    if args.usage_action == "export":
+        return _usage_export(args, out)
+    quiet = args.quiet and not args.dry_run
+    settings = _usage_settings(args, out, quiet)
+    if settings is None:
+        return 1
+    if not settings.exists or not settings.enabled:
+        if not quiet:
+            if not settings.exists:
+                print(f"Usage export is off: there is no settings file ({_tilde(path)}). `crewctl usage init` creates it.")
+            else:
+                print(f"Usage export is off: no endpoint is set in {_tilde(path)}. Set \"endpoint\" (or logs_endpoint and "
+                      "metrics_endpoint) in it, then run `crewctl usage push --dry-run`.")
+        return 0
+    if not os.path.isdir(settings.crew_home):
+        print(out.red(f"Crew's data folder {_tilde(settings.crew_home)} does not exist. Set \"crew_home\" in {_tilde(path)} or use --crew-home."))
+        return 1
+    if not args.dry_run and hasattr(os, "nice"):
+        try:
+            os.nice(10)          # a background job: give way to Kiro and everything else
+        except OSError:
+            pass
+    try:
+        result = usage.run_push(settings, usage.default_state_dir(), dry_run=args.dry_run, max_rows=args.max_rows,
+                                break_lock=args.break_lock)
+    except LockError as error:
+        if not quiet:
+            print(f"Another `crewctl usage push` is still running ({error}). Nothing was done.")
+        return 0
+    except usage.UsageError as error:
+        print(out.red(f"error: {error}"))
+        return 1
+    if args.dry_run:
+        print(out.bold("Dry run: nothing was sent and the read positions did not move."))
+    if not quiet or result.errors:
+        _usage_summary(result, settings, out, args.dry_run)
+    if args.dry_run:
+        _usage_preview(result, out)
+    for error in result.errors:
+        print(out.red(f"error: {error}"))
+    if result.errors:
+        print(out.dim("Nothing that failed is lost: the next run sends it again from Crew's files."))
+        return 1
+    return 0
+
+
+def _usage_export(args, out):
+    """Write the HTML report. Reads Crew's files; needs no endpoint and writes no state."""
+    from . import report, usage
+    settings = _usage_settings(args, out, quiet=True)
+    if settings is None:
+        return 1
+    if not os.path.isdir(settings.crew_home):
+        print(out.red(f"Crew's data folder {_tilde(settings.crew_home)} does not exist. Use --crew-home, or set \"crew_home\" in usage.json."))
+        return 1
+    try:
+        start, end = report.period(args.since, args.from_day, args.to_day)
+        data = report.collect(settings.crew_home, start, end, settings)
+    except usage.UsageError as error:
+        print(out.red(f"error: {error}"))
+        return 1
+    target = args.output or report.default_filename(start, end)
+    target = os.path.expanduser(target)
+    if target.endswith(("/", os.sep)) or os.path.isdir(target):
+        target = os.path.join(target, report.default_filename(start, end))
+    target = os.path.abspath(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    from .util import atomic_write
+    atomic_write(target, report.render_html(data).encode("utf-8"), mode=0o644)
+    print(f"Wrote {_tilde(target)}: {len(data.turns)} turn(s), {data.credits:.3f} credits, {len(data.runs)} subagent run(s), "
+          f"{start.strftime('%Y-%m-%d %H:%M')} to {end.strftime('%Y-%m-%d %H:%M')}.")
+    if data.unreadable:
+        print(out.yellow(f"{data.unreadable} row(s) could not be read and are left out."))
+    return 0
+
+
+def _usage_status(args, out, path):
+    from . import usage
+    settings = _usage_settings(args, out)
+    if settings is None:
+        return 1
+    print(f"Settings:   {_tilde(path)}" + ("" if settings.exists else out.yellow("  (not created yet: crewctl usage init)")))
+    print(f"Logs to:    {settings.logs_url or out.dim('off')}")
+    print(f"Metrics to: {settings.metrics_url or out.dim('off')}")
+    if settings.headers_file:
+        state = "missing" if not os.path.exists(settings.headers_file) else (
+            "readable by others: chmod 600" if os.name != "nt" and os.stat(settings.headers_file).st_mode & 0o077 else "ok")
+        print(f"Headers:    {_tilde(settings.headers_file)} ({state if state == 'ok' else out.red(state)})")
+    privacy = []
+    if settings.drop_fields:
+        privacy.append("not sent: " + ", ".join(settings.drop_fields))
+    if settings.hash_fields:
+        privacy.append("hashed: " + ", ".join(settings.hash_fields))
+    print(f"Privacy:    {'; '.join(privacy) or 'all allowed fields sent as they are'}")
+    print(f"Crew home:  {_tilde(settings.crew_home)}" + ("" if os.path.isdir(settings.crew_home) else out.red("  (not found)")))
+    state_dir = usage.default_state_dir()
+    print(f"State:      {_tilde(state_dir)}")
+    try:
+        state = usage.load_state(state_dir)
+    except usage.UsageError as error:
+        print(out.red(f"error: {error}"))
+        return 1
+    if not state["last_run"]:
+        print(out.dim("No run yet."))
+        return 0
+    credits = sum(e["credits"] for e in state["totals"].values())
+    turns = sum(e["turns"] for e in state["totals"].values())
+    print(f"Last run:   {state['last_run']}")
+    print(f"Last ok:    {state['last_success'] or out.red('never')}")
+    if state["last_error"]:
+        print(out.red(f"Last error: {state['last_error']}"))
+    print(f"Counted:    {turns} turn(s), {credits:.3f} credits, in {len(state['totals'])} series since the state was created")
+    behind = usage.pending_bytes(settings, state)
+    print(f"Unread:     {behind} byte(s) of usage rows not sent yet" if behind else "Unread:     nothing; up to date")
+    if state.get("unreadable_rows"):
+        print(out.yellow(f"Skipped:    {state['unreadable_rows']} row(s) that could not be read"))
     return 0
 
 
@@ -1340,6 +1556,13 @@ def cmd_state(args):
     return 0
 
 
+def _minutes(text):
+    value = int(text) if text.isdigit() else 0
+    if not 1 <= value <= 60:
+        raise argparse.ArgumentTypeError("give a whole number of minutes from 1 to 60")
+    return value
+
+
 def build_parser():
     parser = ColorParser(prog="crewctl", description=render_overview(ColorParser.enabled), formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"crewctl {__version__}")
@@ -1370,6 +1593,29 @@ def build_parser():
     q.add_argument("extra", nargs=argparse.REMAINDER, help="extra options for the checker, after --")
     review.add_parser("where", help="show where the review kit is").set_defaults(project=".")
     p.set_defaults(func=cmd_review)
+    p = sub.add_parser("usage", help="send Kiro Crew's credit usage to Grafana or any OTLP backend")
+    usub = p.add_subparsers(dest="usage_action", required=True)
+    q = usub.add_parser("init", help="create the settings file usage.json (export stays off until you set an endpoint)")
+    q.add_argument("--force", action="store_true", help="replace an existing usage.json with the template")
+    q = usub.add_parser("push", help="send what Crew recorded since the last run, then exit (run it from a scheduler)")
+    q.add_argument("--dry-run", action="store_true", help="show exactly what would be sent; send nothing, move nothing")
+    q.add_argument("--quiet", action="store_true", help="print only errors (for cron and timers)")
+    q.add_argument("--max-rows", type=int, metavar="N", help="read at most N usage rows in this run")
+    q.add_argument("--break-lock", action="store_true", help="remove a lock left by a push that was cut off")
+    usub.add_parser("status", help="settings, last run, last error and how far behind Crew's files the export is")
+    q = usub.add_parser("export", help="write one HTML report of the credit usage (no monitoring stack needed; sends nothing)")
+    q.add_argument("--since", metavar="SPAN", help="the last N hours or days, for example 24h or 7d (default 30d, like Crew's Usage tab)")
+    q.add_argument("--from", dest="from_day", metavar="DAY", help="first day: YYYY-MM-DD, today or yesterday")
+    q.add_argument("--to", dest="to_day", metavar="DAY", help="last day, included (default: the --from day)")
+    q.add_argument("-o", "--output", metavar="PATH", help="the HTML file to write, or a folder ending in / (default: kiro-usage-<period>.html here)")
+    q = usub.add_parser("schedule", help="print the cron, systemd or launchd lines that run push every few minutes (installs nothing)")
+    q.add_argument("scheduler", nargs="?", choices=["cron", "systemd", "launchd"], help="default: launchd on macOS, systemd on Linux with systemd, else cron")
+    q.add_argument("--every", type=_minutes, default=5, metavar="MINUTES", help="minutes between runs, 1 to 60 (default 5)")
+    q.add_argument("--report", action="store_true", help="instead: a daily job at 00:10 that writes yesterday's HTML report (usage export)")
+    q.add_argument("--report-dir", metavar="FOLDER", help="with --report: where the daily reports go (default ~/kiro-usage-reports)")
+    for q in usub.choices.values():
+        q.add_argument("--settings", metavar="FILE", help="the settings file (default: $CREWCTL_USAGE_CONFIG or ~/.config/crewctl/usage.json)")
+    p.set_defaults(func=cmd_usage)
 
     def with_common(p, target=True, yes=False, force=False):
         if target:

@@ -1,0 +1,63 @@
+# A local backend to try `crewctl usage push` and the dashboard: an OpenTelemetry Collector in front of
+# VictoriaMetrics (metrics) and VictoriaLogs (logs), and Grafana. For trying things out: no auth, and every port
+# listens on 127.0.0.1 only. Data is kept in named volumes until `docker compose down -v`.
+#
+#   docker compose up -d
+#   usage.json:  "endpoint": "http://localhost:4318"            (through the collector)
+#   Grafana:     http://localhost:3000  (admin / admin), dashboard "Kiro Crew usage"
+#
+# The first start downloads the VictoriaLogs plugin for Grafana (internet needed once, see grafana-plugins below).
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:latest   # the core distribution has the OTLP receiver and exporter used here
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP/HTTP: what crewctl sends to
+    depends_on: [victoriametrics, victorialogs]
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
+    volumes:
+      - vmdata:/storage
+    ports:
+      - "127.0.0.1:8428:8428"   # PromQL API and OTLP metrics (/opentelemetry/v1/metrics)
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:latest
+    command: ["-storageDataPath=/storage", "-retentionPeriod=90d"]
+    volumes:
+      - vldata:/storage
+    ports:
+      - "127.0.0.1:9428:9428"   # LogsQL API and OTLP logs (/insert/opentelemetry/v1/logs)
+
+  # One-shot: installs the VictoriaLogs plugin into Grafana's volume before Grafana starts, so the log panels work
+  # from the first page load. Later starts find it there and finish at once.
+  grafana-plugins:
+    image: grafana/grafana:latest
+    entrypoint: ["sh", "-c", "[ -d /var/lib/grafana/plugins/victoriametrics-logs-datasource ] || grafana cli --pluginsDir /var/lib/grafana/plugins plugins install victoriametrics-logs-datasource"]
+    volumes:
+      - grafanadata:/var/lib/grafana
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"     # skip Grafana's default plugin set (about 330 MB this stack does not use)
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      victoriametrics: {condition: service_started}
+      victorialogs: {condition: service_started}
+      grafana-plugins: {condition: service_completed_successfully}
+
+volumes:
+  vmdata:
+  vldata:
+  grafanadata:
