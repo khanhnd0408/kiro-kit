@@ -148,7 +148,7 @@ def _args_of(parser, skip=("extra",)):
     return found
 
 
-NOT_BUILDABLE = {"overview", "guide", "completion", "values"}      # helpers of crewctl itself, not tasks to build
+NOT_BUILDABLE = {"overview", "guide", "completion", "values", "map"}      # helpers of crewctl itself, not tasks to build
 
 
 def _skip_overview(choices):

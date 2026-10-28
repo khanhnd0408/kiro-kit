@@ -20,4 +20,4 @@ packages = ["crewctl"]
 version = { attr = "crewctl.__version__" }
 
 [tool.setuptools.package-data]
-crewctl = ["models.json"]
+crewctl = ["models.json", "map.html"]

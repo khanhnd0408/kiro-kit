@@ -21,6 +21,7 @@ JOBS = [
     ("START HERE. Not sure which command? Let crewctl suggest it", [
         ("crewctl guide", "", "describe what you want, then build the command one choice at a time; each choice shows the command and its effect"),
         ("crewctl completion", "bash|zsh|fish", "print a Tab-completion script (commands, options with descriptions, and your crewmate/workspace/server names)"),
+        ("crewctl map", "[-o FILE] [--open]", "write an HTML page that builds any command by clicking through a map; copy the result"),
     ]),
     ("JOB 1. Build and manage the crew (a team of Kiro Crew agents, from JSON files)", [
         ("crewctl init", "[--force] [--team devteam|example [--update]]", "start a config folder, optionally with a ready-made team; --update refreshes an existing copy"),

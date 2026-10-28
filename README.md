@@ -25,6 +25,7 @@ Without installing: run `./bin/crewctl <command>` from this folder, or `cd crewc
 
 ```bash
 crewctl guide                       # describe what you want; it builds the command and shows what each choice does
+crewctl map --open                  # the same as a clickable map in your browser: pick nodes, fill in options, copy the command
 source <(crewctl completion bash)   # Tab completion (zsh: the same with `zsh`; fish: crewctl completion fish | source)
 ```
 

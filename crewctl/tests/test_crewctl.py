@@ -2082,8 +2082,9 @@ class Packaging(unittest.TestCase):
         text = open(os.path.join(root, "pyproject.toml"), encoding="utf-8").read()
         self.assertIn('crewctl = "crewctl.cli:main_entry"', text)
         self.assertTrue(callable(cli.main_entry))
-        self.assertIn('crewctl = ["models.json"]', text)
-        self.assertTrue(os.path.exists(os.path.join(root, "crewctl", "models.json")))
+        self.assertIn('crewctl = ["models.json", "map.html"]', text)          # data files the package reads at run time
+        for name in ("models.json", "map.html"):
+            self.assertTrue(os.path.exists(os.path.join(root, "crewctl", name)), name)
 
     def test_main_entry_exits_with_the_command_status(self):
         with mock.patch.object(sys, "argv", ["crewctl", "--version"]), contextlib.redirect_stdout(io.StringIO()):

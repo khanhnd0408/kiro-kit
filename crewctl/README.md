@@ -25,6 +25,8 @@ crewctl guide
 3. Then it shows the options. Each time you pick one, it prints **the command so far**, **what the choice you just made does**, and **everything added so far**. Type a number again to change or remove an option, `?3` to read the full effect of option 3, `u` to undo, `g` for global options such as `--config-dir`, `p` to print the command and leave, `r` to run it (it asks `yes` first).
 The menu is built from the real command parser, so it always lists the options that exist, and a test checks that every command line it can build is accepted by crewctl.
 
+**Or click it together: `crewctl map --open`.** It writes `crewctl-map.html` (one self-contained page, no internet needed) and opens it. Every command is a node: crewctl › job › group › command › options. Click a node to bring it to the centre; an option shows its input box right on the node, and `?` explains it. A floating bar at the bottom shows the command line as you build it, with **Copy** on the right and an impact label (read-only, writes files, changes Crew). To take something back: the × on a chip in the bar, Backspace (removes the option you added last), Ctrl/Cmd+Z (undo; Shift for redo), Clear, or Reset. Esc returns to the view you came from. Your choices stay with their command while you look around, and the page address remembers where you are, so a link reopens the same command. Light and dark follow your system, or pick one at the top. The page is built from the same parser as the guide, and a test checks that both build the same line for every command; it only builds text, it never runs anything.
+
 **Tab completion.** `crewctl completion bash|zsh|fish` prints a script that completes commands, subcommands and options, and your crewmate, workspace and server names (it asks `crewctl values ...`, so the names are always current). zsh and fish also show a one-line description next to each command and option; bash shows the names only. Use it with `source <(crewctl completion bash)` (or `zsh`), or `crewctl completion fish | source`; put the line in your shell profile to keep it. The bash script is tested; the zsh and fish scripts are generated the same way and checked for structure, but I could not run them where I built this, so tell me if one misbehaves.
 
 **Colors.** `crewctl` and every `--help` screen are colored when the output is a terminal: commands in bold cyan, `--options` in green, `PARAMETERS` in yellow, descriptions in plain text. `--no-color` or the `NO_COLOR` variable turns them off; `FORCE_COLOR=1` turns them on when piping into a pager (`less -R`).
@@ -229,7 +231,7 @@ Run those yourself, or use `register --run` when you're ready. `kirocrew agent c
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests          # 318 tests, all in temp folders
+python3 -m unittest discover -s tests          # 322 tests, all in temp folders (one needs Node; tests/map_browser needs Playwright)
 python3 tests/crosscheck_with_crew.py          # asks your installed Crew to load the example files (read-only, sandboxed)
 ```
 

@@ -325,7 +325,7 @@ Verified on 2026-10-27, with Crew's files from 0.8.0 (real) and 0.10.0 (format r
 - `usage export` on a week of demo data (1,216 turns, 483.10 credits): rendered in Chrome in light and dark mode, the
   one-day version with hourly bars, and printed to PDF. The daily-report job (`schedule --report`) run the same two ways
   as the push job: both wrote yesterday's file.
-- The test suite (318 tests) on Python 3.8 and 3.13.
+- The test suite (322 tests) on Python 3.8 and 3.13.
 
 Not verified:
 

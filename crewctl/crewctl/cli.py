@@ -1345,6 +1345,21 @@ def cmd_guide(args):
         return 130
 
 
+def cmd_map(args):
+    """Write the command map: one HTML page to build any crewctl command by clicking."""
+    from . import cmdmap
+    from .util import atomic_write
+    target = os.path.abspath(os.path.expanduser(args.output or "crewctl-map.html"))
+    if os.path.isdir(target):
+        target = os.path.join(target, "crewctl-map.html")
+    atomic_write(target, cmdmap.render(cmdmap.build_data(build_parser())).encode("utf-8"), mode=0o644)
+    print(f"Wrote {_tilde(target)}. Open it in a browser: click a node to focus it, fill in the options, copy the command.")
+    if args.open:
+        import webbrowser
+        webbrowser.open("file://" + target)
+    return 0
+
+
 def cmd_completion(args):
     """Print a tab-completion script for the chosen shell."""
     from .completion import SCRIPTS
@@ -1581,6 +1596,10 @@ def build_parser():
     p.add_argument("kind", choices=["crewmates", "workspaces", "mcp", "skills", "teams"])
     p.set_defaults(func=cmd_values)
     sub.add_parser("guide", help="build a command step by step; every choice shows the command and what it does").set_defaults(func=cmd_guide)
+    p = sub.add_parser("map", help="write an HTML page that builds any command by clicking through a map of them")
+    p.add_argument("-o", "--output", metavar="FILE", help="where to write it (default: crewctl-map.html in this folder)")
+    p.add_argument("--open", action="store_true", help="also open it in the default browser")
+    p.set_defaults(func=cmd_map)
     p = sub.add_parser("review", help="agent-review kit: install it into a project, or re-check citations")
     review = p.add_subparsers(dest="review_action", required=True)
     q = review.add_parser("install", help="install the review method into a project")

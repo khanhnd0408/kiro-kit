@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crewctl map</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f0efec; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --line: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --shadow: rgba(11,11,11,0.10);
+  --c-root: #2a78d6; --c-group: #6250d6; --c-folder: #1baf7a; --c-cmd: #2a78d6; --c-opt: #eb6834; --c-glob: #898781;
+  --edge: #c3c2b7; --edge-on: #eb6834; --dot: rgba(11,11,11,0.06);
+  --good: #0ca30c; --warning: #b98000; --serious: #c4572f; --critical: #d03b3b;
+  --code-cmd: #1c5cab; --code-opt: #a84a17; --code-val: #0b0b0b; --code-missing: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --line: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --shadow: rgba(0,0,0,0.5);
+    --c-root: #3987e5; --c-group: #9085e9; --c-folder: #199e70; --c-cmd: #3987e5; --c-opt: #d95926; --c-glob: #898781;
+    --edge: #383835; --edge-on: #d95926; --dot: rgba(255,255,255,0.05);
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+    --code-cmd: #86b6ef; --code-opt: #ec835a; --code-val: #f0efec; --code-missing: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --line: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --shadow: rgba(0,0,0,0.5);
+  --c-root: #3987e5; --c-group: #9085e9; --c-folder: #199e70; --c-cmd: #3987e5; --c-opt: #d95926; --c-glob: #898781;
+  --edge: #383835; --edge-on: #d95926; --dot: rgba(255,255,255,0.05);
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #e66767;
+  --code-cmd: #86b6ef; --code-opt: #ec835a; --code-val: #f0efec; --code-missing: #e66767;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+button, input { font: inherit; color: inherit; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--surface); z-index: 5; }
+.brand { font-weight: 600; white-space: nowrap; }
+.brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+.crumbs { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+.crumbs button { border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: pointer; color: var(--ink-2); }
+.crumbs button:hover { background: var(--surface-2); color: var(--ink); }
+.crumbs button[aria-current] { color: var(--ink); font-weight: 600; }
+.crumbs .sep { color: var(--muted); }
+.search { position: relative; }
+.search input { width: clamp(140px, 20vw, 260px); padding: 7px 10px 7px 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--page); }
+.search::before { content: "⌕"; position: absolute; left: 10px; top: 6px; color: var(--muted); }
+.results { position: absolute; top: 40px; right: 0; width: 380px; max-height: 60vh; overflow: auto; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px var(--shadow); padding: 4px; display: none; }
+.results.open { display: block; }
+.results button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.results button:hover, .results button.active { background: var(--surface-2); }
+.results b { font-weight: 600; }
+.results span { display: block; color: var(--ink-2); font-size: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: none; padding: 6px 10px; cursor: pointer; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.ghost { border: 1px solid var(--border); background: none; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--ink-2); }
+.ghost:hover { color: var(--ink); background: var(--surface-2); }
+
+/* the stage */
+.stage { position: relative; overflow: hidden;
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.4px); background-size: 22px 22px; }
+.stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.edge { fill: none; stroke: var(--edge); stroke-width: 1.5; stroke-linecap: round; }
+.edge.parent { stroke-width: 1.2; opacity: .3; }
+.edge.on { stroke: var(--edge-on); stroke-width: 2; }
+.edge.pulse { stroke: var(--edge-on); stroke-width: 2.5; stroke-dasharray: 2 14; animation: flow 1.1s linear infinite; opacity: .9; }
+@keyframes flow { to { stroke-dashoffset: -16; } }
+.tip { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); color: var(--muted); font-size: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; white-space: nowrap; z-index: 3; }
+
+.node { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) scale(1);
+  transition: left .45s cubic-bezier(.2,.8,.2,1), top .45s cubic-bezier(.2,.8,.2,1), opacity .3s, transform .45s; z-index: 2; }
+.node.hidden { opacity: 0; pointer-events: none; transform: translate(-50%, -50%) scale(.4); }
+/* the parent (where you came from): pushed into the background, sharp again on hover so it is easy to go back */
+.node.dim { opacity: .42; filter: blur(2.2px) saturate(.45); transition: left .45s cubic-bezier(.2,.8,.2,1), top .45s cubic-bezier(.2,.8,.2,1), opacity .3s, transform .45s, filter .25s; }
+.node.dim:hover, .node.dim:focus-within { opacity: 1; filter: none; }
+/* round nodes: root, groups, folders, commands */
+.orb { --c: var(--c-cmd); width: 104px; height: 104px; border-radius: 50%; border: 2px solid var(--c); background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px;
+  cursor: pointer; box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 10%, transparent), 0 6px 18px var(--shadow); }
+.orb:hover { box-shadow: 0 0 0 9px color-mix(in srgb, var(--c) 18%, transparent), 0 6px 18px var(--shadow); }
+.orb:focus-visible, .pill:focus-within { outline: 2px solid var(--c); outline-offset: 4px; }
+.orb .name { font-weight: 600; line-height: 1.15; word-break: break-word; }
+.orb .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.orb.root { --c: var(--c-root); width: 132px; height: 132px; }
+.orb.root .name { font-size: 20px; }
+.orb.group { --c: var(--c-group); width: 116px; height: 116px; }
+.orb.folder { --c: var(--c-folder); }
+.orb.glob { --c: var(--c-glob); width: 92px; height: 92px; }
+/* the active node: bigger, a thicker ring, a tinted fill and a slow breathing halo */
+.node.focus { z-index: 3; }
+.node.focus .orb { transform: scale(1.3); border-width: 3px;
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--c) 22%, var(--surface)), color-mix(in srgb, var(--c) 8%, var(--surface)) 70%);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 22%, transparent), 0 0 0 16px color-mix(in srgb, var(--c) 9%, transparent),
+              0 0 56px color-mix(in srgb, var(--c) 45%, transparent), 0 10px 28px var(--shadow); }
+.node.focus .orb .name { font-size: 16px; }
+.node.focus .orb.root .name { font-size: 22px; }
+.node.focus .orb::after { content: ""; position: absolute; inset: -14px; border-radius: 50%; border: 2px solid var(--c);
+  opacity: 0; animation: breathe 2.6s ease-out infinite; pointer-events: none; }
+@keyframes breathe { 0% { transform: scale(.92); opacity: .55; } 100% { transform: scale(1.22); opacity: 0; } }
+.orb { position: relative; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor; margin-top: 4px; white-space: nowrap; }
+.badge.read { color: var(--good); } .badge.write { color: var(--warning); } .badge.change { color: var(--serious); }
+
+/* option nodes: a pill with the input in place of the name */
+.pill { --c: var(--c-opt); position: relative; width: 214px; padding: 9px 12px 10px; border-radius: 16px; background: var(--surface);
+  border: 1.5px solid color-mix(in srgb, var(--c) 55%, var(--border)); box-shadow: 0 6px 18px var(--shadow); }
+.pill.on { border-color: var(--c); box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 14%, transparent), 0 6px 18px var(--shadow); }
+.pill.required { border-style: dashed; }
+.pill.required.filled { border-style: solid; }
+.pill .flag { font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink-2); display: block; margin-bottom: 6px; }
+.pill .req { color: var(--critical); font: 600 10px/1 system-ui, sans-serif; margin-left: 6px; text-transform: uppercase; letter-spacing: .03em; }
+.pill input[type=text] { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--page);
+  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.pill input[type=text]:focus { outline: none; border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 20%, transparent); }
+.toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 0; background: none;
+  padding: 0; cursor: pointer; text-align: left; }
+.toggle .flag { margin: 0; }
+.switch { width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; flex: none; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow); transition: left .2s; }
+.pill.on .switch { background: var(--c); } .pill.on .switch::after { left: 17px; }
+.choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.choices button { border: 1px solid var(--border); background: var(--page); border-radius: 999px; padding: 3px 9px; cursor: pointer;
+  font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink-2); }
+.choices button[aria-pressed="true"] { background: var(--c); border-color: var(--c); color: #fff; }
+.hint-btn { position: absolute; top: -11px; right: 14px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink-2); font: 600 12px/20px system-ui, sans-serif; cursor: pointer; padding: 0; }
+.hint-btn:hover, .hint-btn[aria-expanded="true"] { background: var(--c); color: #fff; border-color: var(--c); }
+.popover { position: absolute; z-index: 10; width: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px var(--shadow); padding: 12px 14px; display: none; }
+.popover.open { display: block; }
+.popover h3 { margin: 0 0 6px; font: 600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.popover p { margin: 0 0 6px; color: var(--ink-2); font-size: 13px; }
+.popover p.effect { color: var(--ink); }
+.popover .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 16px; }
+
+/* bottom: what it does + the command + copy */
+/* the command bar: a floating glass panel (Spotlight-like) that grows when the command wraps */
+:root { --glass: rgba(252,252,251,0.62); --glass-edge: rgba(255,255,255,0.70); --glass-line: rgba(11,11,11,0.08);
+  --glass-shadow: 0 18px 50px rgba(11,11,11,0.18), 0 2px 6px rgba(11,11,11,0.06); --glass-inner: inset 0 1px 0 rgba(255,255,255,0.75); }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) {
+  --glass: rgba(30,30,28,0.55); --glass-edge: rgba(255,255,255,0.14); --glass-line: rgba(255,255,255,0.08);
+  --glass-shadow: 0 18px 50px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35); --glass-inner: inset 0 1px 0 rgba(255,255,255,0.08); } }
+:root[data-theme="dark"] { --glass: rgba(30,30,28,0.55); --glass-edge: rgba(255,255,255,0.14); --glass-line: rgba(255,255,255,0.08);
+  --glass-shadow: 0 18px 50px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35); --glass-inner: inset 0 1px 0 rgba(255,255,255,0.08); }
+.bar { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(980px, calc(100% - 32px)); z-index: 6;
+  background: var(--glass); -webkit-backdrop-filter: blur(26px) saturate(180%); backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid var(--glass-edge); border-radius: 22px; box-shadow: var(--glass-shadow), var(--glass-inner); padding: 8px 8px 8px 16px; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .bar { background: var(--surface); } }
+.cmdrow { display: flex; align-items: flex-start; gap: 10px; }
+.cmdrow .lead { flex: none; padding-top: 9px; color: var(--muted); font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; user-select: none; }
+.grow { flex: 1; min-width: 0; overflow: hidden; transition: height .28s cubic-bezier(.2,.8,.2,1); }
+.cmdbox { padding: 7px 2px; font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap;
+  overflow-wrap: anywhere; max-height: 34vh; overflow-y: auto; }
+.cmdbox span { white-space: nowrap; }                       /* wrap between tokens, never inside --copy-from */
+.cmdbox span.long, .cmdbox .chip.long { white-space: normal; }       /* a long value may wrap... */
+.cmdbox .chip.long .v { white-space: normal; overflow-wrap: anywhere; }  /* ...inside itself; --copy-from never does */
+.chip { position: relative; border-radius: 7px; padding: 1px 3px; margin: 0 -3px; cursor: pointer; transition: background .15s; }
+.chip:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+/* The x: a zero-width button in the text flow (so the line's text stays one clean line), with its circle drawn on the
+   chip's corner. Clicking the circle clicks the button. */
+.chip .x { position: relative; display: inline; cursor: pointer; user-select: none; }
+                     /* an empty inline: no width, no line break in the text, and its box lines up with the chip's text */
+.chip .x::before { content: "×"; position: absolute; top: -10px; left: -5px; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--ink-2); color: var(--surface); border: 1px solid var(--glass-edge); font: 700 11px/15px system-ui, sans-serif;
+  text-align: center; opacity: 0; transform: scale(.7); transition: opacity .15s, transform .15s; z-index: 1; }
+.chip:hover .x::before, .chip .x:focus-visible::before { opacity: 1; transform: scale(1); }
+.chip .x:hover::before { background: var(--critical); color: #fff; }
+.chip .x:focus-visible { outline: none; }
+.chip .x:focus-visible::before { outline: 2px solid var(--c-cmd); outline-offset: 1px; }
+@media (hover: none) { .chip .x::before { opacity: .7; transform: scale(1); } }
+.chip.missing { outline: 1px dashed var(--code-missing); outline-offset: -1px; }
+.clearall { border: 1px solid var(--glass-line); background: transparent; color: var(--ink-2); height: 36px; padding: 0 12px; border-radius: 14px; cursor: pointer; }
+.clearall:hover:not(:disabled) { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.clearall:disabled { opacity: .4; cursor: default; }
+.toast { position: fixed; left: 50%; transform: translate(-50%, 12px); bottom: 130px; z-index: 7; display: flex; gap: 14px; align-items: center;
+  background: var(--glass); -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid var(--glass-edge); border-radius: 999px; box-shadow: var(--glass-shadow); padding: 8px 10px 8px 16px; font-size: 13px;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.toast.open { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.toast button { border: 0; background: var(--c-cmd); color: #fff; border-radius: 999px; padding: 4px 12px; cursor: pointer; font-weight: 600; }
+.field { position: relative; }
+.field input { padding-right: 28px !important; }
+.field .clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border-radius: 50%; border: 0;
+  background: color-mix(in srgb, var(--ink) 14%, transparent); color: var(--ink-2); font: 600 12px/18px system-ui, sans-serif; padding: 0; cursor: pointer; }
+.field .clear::before { content: "×"; }
+.field .clear:hover { background: var(--critical); color: #fff; }
+.pill:not(.filled) .clear { display: none; }
+.pill.flash { animation: flash .9s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent); } 100% { box-shadow: 0 0 0 16px transparent; } }
+.cmdbox .w { color: var(--code-cmd); font-weight: 600; }
+.cmdbox .o { color: var(--code-opt); }
+.cmdbox .v { color: var(--code-val); }
+.cmdbox .m { color: var(--code-missing); font-style: italic; }
+.side { flex: none; display: flex; align-items: center; gap: 8px; }
+.side .badge { margin: 0; }
+.copy { border: 0; background: var(--c-cmd); color: #fff; height: 36px; padding: 0 16px; border-radius: 14px; cursor: pointer; font-weight: 600;
+  min-width: 92px; box-shadow: 0 4px 14px color-mix(in srgb, var(--c-cmd) 35%, transparent); transition: background .2s, transform .1s; }
+.copy:active { transform: scale(.97); }
+.copy:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.copy.done { background: var(--good); }
+.foot { display: flex; gap: 12px; align-items: baseline; border-top: 1px solid var(--glass-line); margin: 6px 8px 0 0; padding: 7px 0 2px; }
+.effects { flex: 1; min-width: 0; color: var(--ink-2); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; }
+.effects b { color: var(--ink); font-weight: 600; }
+.effects .kept { color: var(--muted); }
+/* no hover-expand here: the panel grows upward, so it would pull the chips away from the pointer */
+.warnline { flex: none; color: var(--critical); font-size: 12px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .node, .orb { transition: none !important; } .edge.pulse { animation: none; }
+  .node.focus .orb::after { animation: none; opacity: .35; transform: scale(1.06); } }
+@media (max-width: 1000px) { .brand small { display: none; } .seg button { padding: 6px 7px; } .top { gap: 8px; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">crewctl map<small id="ver"></small></div>
+  <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
+  <div class="search"><input id="q" type="text" placeholder="Find a command…  ( / )" aria-label="Find a command" autocomplete="off">
+    <div class="results" id="results" role="listbox"></div></div>
+  <div class="seg" role="group" aria-label="Theme">
+    <button data-theme-set="auto" aria-pressed="true">Auto</button><button data-theme-set="light" aria-pressed="false">Light</button><button data-theme-set="dark" aria-pressed="false">Dark</button>
+  </div>
+  <button class="ghost" id="reset" title="Clear every choice">Reset</button>
+</header>
+<main class="stage" id="stage">
+  <svg id="edges" aria-hidden="true"></svg>
+  <div class="tip" id="tip">Click a node to focus it · Esc goes back to where you were · ⌫ removes the last option · ⌘Z / Ctrl+Z undoes · ? explains</div>
+  <div class="toast" id="toast" role="status"><span id="toastText"></span><button id="toastAction">Undo</button></div>
+  <div class="popover" id="popover" role="dialog"><button class="close" aria-label="Close">×</button><div id="popbody"></div></div>
+</main>
+<footer class="bar" id="bar">
+  <div class="cmdrow">
+    <span class="lead" aria-hidden="true">$</span>
+    <div class="grow" id="grow"><div class="cmdbox" id="cmd" aria-live="polite"></div></div>
+    <div class="side"><span id="impact"></span><button class="clearall" id="clear" title="Remove every option of this command (⌘Z brings it back)">Clear</button><button class="copy" id="copy">Copy</button></div>
+  </div>
+  <div class="foot"><div class="effects" id="effects"></div><div class="warnline" id="warn"></div></div>
+</footer>
+<script>
+const DATA = /*DATA*/null;
+
+// CORE-START: pure functions, also run by the tests against crewctl's own command builder
+function shellQuote(text) {
+  text = String(text);
+  if (text === "") return "''";
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(text)) return text;
+  return "'" + text.replace(/'/g, "'\"'\"'") + "'";
+}
+function splitList(text) {
+  return String(text).split(/[\s,]+/).filter(Boolean);
+}
+// The same order as crewctl guide: global options, command words, the preset action, positionals, then options.
+// values: {dest: true | "text"}; multi values are a "a, b" string. Returns [{t: token, k: kind}] with kind
+// w (command word), o (option), v (value), m (missing required value).
+function buildTokens(command, values, globals, globalValues) {
+  const out = [];
+  for (const arg of globals) {
+    const value = globalValues[arg.dest];
+    if (value === undefined || value === "" || value === false) continue;
+    out.push({t: arg.flags[arg.flags.length - 1], k: "o", d: arg.dest, g: true});
+    if (arg.kind !== "flag") out.push({t: String(value), k: "v", d: arg.dest, g: true});           // --verbose is a switch: no value after it
+  }
+  for (const part of command.parts) out.push({t: part, k: "w"});
+  for (const word of Object.values(command.preset)) out.push({t: String(word), k: "w"});
+  for (const arg of command.args) {
+    if (!arg.positional || arg.dest in command.preset) continue;
+    const value = values[arg.dest];
+    if (value === undefined || value === "") {
+      if (arg.required) out.push({t: "<" + arg.metavar + ">", k: "m", d: arg.dest});
+      continue;
+    }
+    if (arg.kind === "multi") splitList(value).forEach((item, i) => out.push({t: item, k: "v", d: arg.dest, i}));
+    else out.push({t: String(value), k: "v", d: arg.dest});
+  }
+  for (const arg of command.args) {
+    if (arg.positional) continue;
+    const value = values[arg.dest];
+    if (value === undefined || value === "" || value === false) continue;
+    const flag = arg.flags[arg.flags.length - 1];
+    if (arg.kind === "flag") { if (value) out.push({t: flag, k: "o", d: arg.dest}); }
+    else if (arg.kind === "multi") splitList(value).forEach((item, i) => out.push({t: flag, k: "o", d: arg.dest, i}, {t: item, k: "v", d: arg.dest, i}));
+    else out.push({t: flag, k: "o", d: arg.dest}, {t: String(value), k: "v", d: arg.dest});
+  }
+  return out;
+}
+function commandLine(tokens) {
+  return ["crewctl"].concat(tokens.map(tok => tok.k === "m" ? tok.t : shellQuote(tok.t))).join(" ");
+}
+// CORE-END
+
+// ---------------------------------------------------------------------------------------------------------------
+// The tree: crewctl > job > (cluster) > (command group) > command > options (+ global options)
+const CLUSTERS = {
+  "Crew": [["Setup", "Start a config folder, check it, see the models", ["init", "validate", "models"]],
+           ["Agent files", "Plan, write and remove the agent files", ["plan", "apply", "destroy", "status", "import", "state"]],
+           ["Crew records", "Register crewmates in Crew and manage workspaces", ["register", "workspace"]],
+           ["Skills", "Build and check SKILL.md files", ["skills", "lint-skills"]],
+           ["MCP servers", "Give crewmates servers from mcp.json", ["mcp", "crew-servers"]]],
+};
+const IMPACT_CLASS = {read: "read", config: "write", agents: "write", skills: "write", report: "write", "usage-settings": "write",
+                      install: "write", crew: "change", program: "change", send: "change"};
+const IMPACT_ICON = {read: "●", write: "▲", change: "◆"};
+const IMPACT_SHORT = {read: "read-only", config: "edits config", agents: "writes agents", skills: "writes skills", report: "writes report",
+                      "usage-settings": "writes settings", install: "copies files", crew: "changes Crew", program: "runs program", send: "sends data"};
+
+const nodes = {};
+const commandsById = {};
+function add(node) { node.children = []; nodes[node.id] = node; if (node.parent) nodes[node.parent].children.push(node.id); return node; }
+function shortTitle(title) {
+  const m = title.match(/^JOB \d+\.\s*([^:(]+)/);
+  const name = m ? m[1].trim() : title;
+  return name.replace(/^Build and manage the crew.*/i, "Crew").replace(/^Review.*/i, "Review").replace(/^Watch credit usage.*/i, "Usage");
+}
+function buildTree() {
+  add({id: "root", type: "root", label: "crewctl", meta: "pick a job"});
+  const byFirst = {};
+  for (const c of DATA.commands) (byFirst[c.path[0]] = byFirst[c.path[0]] || []).push(c);
+  for (const group of DATA.groups) {
+    const words = Object.keys(group.summary);
+    const firsts = [...new Set(words.map(w => w.split(" ")[0]))].filter(w => byFirst[w]);
+    if (!firsts.length) continue;                                  // "start here": guide and completion are not commands to build
+    const name = shortTitle(group.title);
+    const gid = "g:" + name;
+    add({id: gid, type: "group", label: name, meta: group.title.replace(/^JOB \d+\.\s*/, ""), parent: "root"});
+    const clusters = CLUSTERS[name] || [[null, null, firsts]];
+    for (const [cname, cmeta, members] of clusters) {
+      const parent = cname ? add({id: gid + "/" + cname, type: "folder", label: cname, meta: cmeta, parent: gid}).id : gid;
+      for (const first of members.filter(m => byFirst[m])) {
+        const list = byFirst[first];
+        let holder = parent;
+        const onlyMember = !cname && members.length === 1;            // Usage > usage > export would repeat itself
+        if (!onlyMember && (list.length > 1 || list[0].path.length > 1)) {
+          holder = add({id: "cg:" + first, type: "folder", label: first, meta: list.length + " commands", parent}).id;
+        }
+        for (const c of list) {
+          const key = c.path.join(" ");
+          const summary = group.summary[key] || group.summary[c.path[0]] || c.effect;
+          const id = "c:" + key;
+          commandsById[id] = c;
+          add({id, type: "cmd", label: c.path.length > 1 ? c.path.slice(1).join(" ") : c.path[0], meta: summary, cmd: c, parent: holder});
+          for (const arg of c.args) {
+            if (arg.dest in c.preset) continue;
+            add({id: id + "|" + arg.dest, type: "opt", arg, cmdId: id, parent: id});
+          }
+          const gl = add({id: id + "|@globals", type: "glob", label: "global options", meta: DATA.globals.length + " options", parent: id});
+          for (const arg of DATA.globals) add({id: gl.id + "|" + arg.dest, type: "opt", arg, cmdId: id, global: true, parent: gl.id});
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+const state = {focus: "root", values: {}, globals: {}, trail: []};   // trail: the views you came from, for Esc
+const stage = document.getElementById("stage");
+const svg = document.getElementById("edges");
+const els = {};
+
+function cmdOf(id) {
+  let n = nodes[id];
+  while (n && n.type !== "cmd") n = n.parent ? nodes[n.parent] : null;
+  return n ? n.id : null;
+}
+function valuesFor(cmdId) { return state.values[cmdId] || (state.values[cmdId] = {}); }
+function getValue(node) { return node.global ? state.globals[node.arg.dest] : valuesFor(node.cmdId)[node.arg.dest]; }
+// Undo history: one step per click; typing in one box counts as one step until you pause for a second.
+const order = {};                                 // per command: option keys in the order they were added ("@x" = global)
+const undoLog = {undo: [], redo: [], lastKey: null, lastAt: 0};       // not `history`: that is the browser's
+function orderFor(cmdId) { return order[cmdId] || (order[cmdId] = []); }
+function snapshot() { return JSON.stringify({values: state.values, globals: state.globals, order}); }
+function restore(snap) {
+  const saved = JSON.parse(snap);
+  state.values = saved.values; state.globals = saved.globals;
+  Object.keys(order).forEach(k => delete order[k]); Object.assign(order, saved.order);
+  Object.keys(nodes).forEach(refreshNode); render(); drawEdges(); saveHash();
+}
+function remember(key) {
+  const now = Date.now();
+  if (key && key === undoLog.lastKey && now - undoLog.lastAt < 1000) { undoLog.lastAt = now; return; }
+  undoLog.undo.push(snapshot());
+  if (undoLog.undo.length > 200) undoLog.undo.shift();
+  undoLog.redo = []; undoLog.lastKey = key; undoLog.lastAt = now;
+}
+function setValue(node, value, how) {
+  remember(how === "type" ? node.id : null);
+  const store = node.global ? state.globals : valuesFor(node.cmdId);
+  const key = (node.global ? "@" : "") + node.arg.dest, list = orderFor(node.cmdId);
+  const at = list.indexOf(key);
+  if (at >= 0) list.splice(at, 1);
+  if (value === "" || value === false || value === undefined) delete store[node.arg.dest];
+  else { store[node.arg.dest] = value; list.push(key); }
+  refreshNode(node.id); render(); drawEdges(); saveHash();
+}
+function optionNode(cmdId, key) { return nodes[key.startsWith("@") ? cmdId + "|@globals|" + key.slice(1) : cmdId + "|" + key]; }
+// Remove one option (or one item of a list) and offer Undo.
+function removeOption(cmdId, key, item) {
+  const node = optionNode(cmdId, key);
+  if (!node || !isSet(node)) return;
+  if (item !== undefined && item !== "" && node.arg.kind === "multi") {
+    const items = splitList(getValue(node)), gone = items[+item];
+    setValue(node, items.filter((_, i) => i !== +item).join(", "));
+    toast(`Removed ${gone} from ${flagLabel(node.arg)}`);
+  } else {
+    setValue(node, "");
+    toast(`Removed ${flagLabel(node.arg)}`);
+  }
+}
+// Backspace: remove the option added last (like deleting the last tag in a search field).
+function removeLast() {
+  const cmdId = cmdOf(state.focus);
+  if (!cmdId) { toast("Open a command first: Backspace removes its last option", false); return; }
+  const list = orderFor(cmdId).filter(k => { const n = optionNode(cmdId, k); return n && isSet(n); });
+  const fallback = Object.keys(valuesFor(cmdId)).concat(Object.keys(state.globals).map(k => "@" + k));
+  const key = list.length ? list[list.length - 1] : fallback[fallback.length - 1];
+  if (key) removeOption(cmdId, key); else toast("Nothing to remove", false);
+}
+function clearCommand() {
+  const cmdId = cmdOf(state.focus);
+  if (!cmdId || (!Object.keys(valuesFor(cmdId)).length && !Object.keys(state.globals).length)) return;
+  remember(null);
+  state.values[cmdId] = {}; state.globals = {}; order[cmdId] = [];
+  Object.keys(nodes).forEach(refreshNode); render(); drawEdges(); saveHash();
+  toast("Cleared every option of this command");
+}
+function undo() {
+  if (!undoLog.undo.length) { toast("Nothing to undo", false); return; }
+  undoLog.redo.push(snapshot()); restore(undoLog.undo.pop()); undoLog.lastKey = null;
+  toast("Undone", false, true);
+}
+function redo() {
+  if (!undoLog.redo.length) { toast("Nothing to redo", false); return; }
+  undoLog.undo.push(snapshot()); restore(undoLog.redo.pop()); undoLog.lastKey = null;
+  toast("Redone", false);
+}
+// A small glass notice above the bar, with Undo.
+let toastTimer = null;
+function toast(text, offerUndo = true, offerRedo = false) {
+  const box = document.getElementById("toast");
+  document.getElementById("toastText").textContent = text;
+  const action = document.getElementById("toastAction");
+  action.hidden = !(offerUndo || offerRedo);
+  action.textContent = offerRedo ? "Redo" : "Undo";
+  action.onclick = offerRedo ? redo : undo;
+  box.style.bottom = (document.getElementById("bar").offsetHeight + 34) + "px";
+  box.classList.add("open");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => box.classList.remove("open"), 4500);
+}
+function isSet(node) { const v = getValue(node); return v !== undefined && v !== "" && v !== false; }
+
+function esc(text) { return String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c])); }
+
+function makeNode(node) {
+  const el = document.createElement("div");
+  el.className = "node hidden";
+  el.dataset.id = node.id;
+  if (node.type === "opt") {
+    el.innerHTML = optionHtml(node);
+    wireOption(el, node);
+  } else {
+    const badge = node.type === "cmd" ? impactBadge(node.cmd.impact, true) : "";
+    el.innerHTML = `<button class="orb ${node.type}" aria-label="${esc(node.label)}"><span class="name">${esc(node.label)}</span>` +
+      (node.type === "cmd" ? badge : `<span class="meta">${esc(shortMeta(node))}</span>`) + `</button>`;
+    el.querySelector(".orb").addEventListener("click", () => focusNode(node.id));
+  }
+  stage.appendChild(el);
+  els[node.id] = el;
+}
+function shortMeta(node) {
+  if (node.type === "root") return node.meta;
+  if (node.type === "group" || node.type === "folder") return node.children.length + (node.children.length === 1 ? " item" : " items");
+  return node.meta || "";
+}
+function impactBadge(key, short) {
+  const cls = IMPACT_CLASS[key] || "write";
+  const label = short ? (IMPACT_SHORT[key] || key) : (DATA.impacts[key] || [key])[0];
+  return `<span class="badge ${cls}" title="${esc((DATA.impacts[key] || ["", ""])[1])}">${IMPACT_ICON[cls]} ${esc(label)}</span>`;
+}
+function flagLabel(arg) { return arg.positional ? arg.metavar : arg.flags.join(", "); }
+function optionHtml(node) {
+  const arg = node.arg;
+  const req = arg.required ? '<span class="req">required</span>' : "";
+  const hint = `<button class="hint-btn" aria-label="What does ${esc(flagLabel(arg))} do?" aria-expanded="false">?</button>`;
+  let body;
+  if (arg.kind === "flag") {
+    body = `<button class="toggle" role="switch" aria-checked="false"><span class="flag">${esc(flagLabel(arg))}</span><span class="switch"></span></button>`;
+  } else if (arg.choices.length) {
+    body = `<span class="flag">${esc(flagLabel(arg))}${req}</span><div class="choices">` +
+      arg.choices.map(c => `<button data-choice="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join("") + `</div>`;
+  } else {
+    const placeholder = arg.kind === "multi" ? arg.metavar + ", " + arg.metavar + " …" : arg.metavar;
+    body = `<label class="flag" for="in-${esc(node.id)}">${esc(flagLabel(arg))}${req}</label>` +
+      `<div class="field"><input type="text" id="in-${esc(node.id)}" placeholder="${esc(placeholder)}" spellcheck="false" autocomplete="off">` +
+      `<button class="clear" aria-label="Clear ${esc(flagLabel(arg))}" tabindex="-1"></button></div>`;
+  }
+  return `<div class="pill${arg.required ? " required" : ""}">${hint}${body}</div>`;
+}
+function wireOption(el, node) {
+  const arg = node.arg;
+  el.querySelector(".hint-btn").addEventListener("click", e => { e.stopPropagation(); openHint(node, e.currentTarget); });
+  if (arg.kind === "flag") el.querySelector(".toggle").addEventListener("click", () => setValue(node, !isSet(node)));
+  else if (arg.choices.length) el.querySelectorAll("[data-choice]").forEach(b => b.addEventListener("click", () =>
+    setValue(node, getValue(node) === b.dataset.choice ? "" : b.dataset.choice)));
+  else {
+    const input = el.querySelector("input");
+    input.addEventListener("input", e => setValue(node, e.target.value, "type"));
+    el.querySelector(".clear").addEventListener("click", () => { removeOption(node.cmdId, (node.global ? "@" : "") + arg.dest); input.focus(); });
+  }
+}
+function refreshNode(id) {
+  const node = nodes[id], el = els[id];
+  if (!el || node.type !== "opt") return;
+  const pill = el.querySelector(".pill");
+  pill.classList.toggle("on", isSet(node));
+  pill.classList.toggle("filled", isSet(node));
+  const value = getValue(node);
+  if (node.arg.kind === "flag") el.querySelector(".toggle").setAttribute("aria-checked", String(!!value));
+  else if (node.arg.choices.length) el.querySelectorAll("[data-choice]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.choice === value)));
+  else { const input = el.querySelector("input"); if (document.activeElement !== input) input.value = value || ""; }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+function focusNode(id, goingBack) {
+  if (!nodes[id] || nodes[id].type === "opt") return;
+  if (!goingBack && id !== state.focus) {
+    state.trail.push(state.focus);
+    if (state.trail.length > 100) state.trail.shift();
+  }
+  state.focus = id;
+  closeHint();
+  layout(); render(); saveHash();
+}
+function commandsUnder(id) {
+  const n = nodes[id];
+  if (n.type === "cmd") return [n.cmd];
+  if (n.type === "opt" || n.type === "glob") return [];
+  return n.children.flatMap(commandsUnder);
+}
+function commonWords(id) {
+  const paths = commandsUnder(id).map(c => c.path.slice(0, -1).length ? c.path.slice(0, -1) : []);
+  if (!paths.length) return [];
+  const first = paths[0];
+  let size = first.length;
+  for (const path of paths) { let i = 0; while (i < size && path[i] === first[i]) i++; size = i; }
+  return first.slice(0, size);
+}
+// Esc: back to the view you came from, like a browser's Back (after a search or a breadcrumb jump too). With nowhere
+// to go back to (a page opened from a link), it goes to the parent.
+function goBack() {
+  while (state.trail.length) {
+    const previous = state.trail.pop();
+    if (nodes[previous] && previous !== state.focus) { focusNode(previous, true); return; }
+  }
+  const n = nodes[state.focus];
+  if (n.parent) focusNode(n.parent, true);
+}
+
+function layout() {
+  const reserved = (document.getElementById("bar").offsetHeight || 90) + 34;     // the floating bar covers the bottom of the stage
+  const W = stage.clientWidth, H = Math.max(260, stage.clientHeight - reserved);
+  const cx = W / 2, cy = H / 2 + 14;
+  const focus = nodes[state.focus];
+  const visible = new Map();
+  visible.set(focus.id, {x: cx, y: cy, cls: "focus"});
+  const kids = focus.children;
+  const options = kids.length && nodes[kids[0]].type === "opt";
+  const rx = Math.min(W * (options ? 0.36 : 0.32), options ? 560 : 440), ry = Math.min(H * 0.34, 300);
+  let from = -Math.PI * 0.5, span = Math.PI * 2;                   // root: a full ring from the top
+  if (focus.parent) {
+    from = -Math.PI * 0.80; span = Math.PI * 1.60;                // leave the left side for the parent
+    const px = Math.max(80, cx - rx - 110);
+    visible.set(focus.parent, {x: px, y: cy, cls: "dim"});
+  }
+  const n = kids.length;
+  kids.forEach((kid, i) => {
+    const t = focus.parent ? (n === 1 ? 0.5 : i / (n - 1)) : i / n;
+    const a = from + span * t;
+    visible.set(kid, {x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), cls: ""});
+  });
+  for (const [id, el] of Object.entries(els)) {
+    const spot = visible.get(id);
+    if (spot) {
+      el.classList.remove("hidden", "dim", "focus");
+      if (spot.cls) el.classList.add(spot.cls);
+      el.style.left = spot.x + "px"; el.style.top = spot.y + "px";
+    } else if (!el.classList.contains("hidden")) {
+      el.classList.add("hidden");
+      el.classList.remove("dim", "focus");
+      el.style.left = cx + "px"; el.style.top = cy + "px";
+    } else {
+      el.style.left = cx + "px"; el.style.top = cy + "px";
+    }
+  }
+  state.visible = visible;
+  animateEdges();
+}
+let edgeTimer = null;
+function animateEdges() {
+  const until = performance.now() + 520;
+  cancelAnimationFrame(edgeTimer);
+  const step = () => { drawEdges(); if (performance.now() < until) edgeTimer = requestAnimationFrame(step); };
+  step();
+}
+function centerOf(id) {
+  const box = els[id].getBoundingClientRect(), s = stage.getBoundingClientRect();
+  return {x: box.left + box.width / 2 - s.left, y: box.top + box.height / 2 - s.top};
+}
+function drawEdges() {
+  if (!state.visible) return;
+  const focus = nodes[state.focus];
+  const parts = [];
+  const curve = (a, b, cls) => {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const bend = Math.min(40, len * 0.12);
+    const qx = mx - dy / len * bend, qy = my + dx / len * bend;      // a slight curve: dendrites, not spokes
+    parts.push(`<path class="edge ${cls}" d="M${a.x.toFixed(1)},${a.y.toFixed(1)} Q${qx.toFixed(1)},${qy.toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}"/>`);
+  };
+  const c = centerOf(focus.id);
+  if (focus.parent && state.visible.has(focus.parent)) curve(centerOf(focus.parent), c, "parent");
+  for (const kid of focus.children) {
+    const node = nodes[kid];
+    const on = node.type === "opt" ? isSet(node) : node.type === "glob" ? DATA.globals.some(a => state.globals[a.dest]) :
+      Object.keys(state.values).some(k => k.startsWith(kid) && Object.keys(state.values[k]).length);
+    curve(c, centerOf(kid), on ? "on" : "");
+    if (on && node.type === "opt") curve(c, centerOf(kid), "pulse");
+  }
+  svg.innerHTML = parts.join("");
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+function render() {
+  // breadcrumbs
+  const chain = [];
+  for (let n = nodes[state.focus]; n; n = n.parent ? nodes[n.parent] : null) chain.unshift(n);
+  document.getElementById("crumbs").innerHTML = chain.map((n, i) =>
+    (i ? '<span class="sep">›</span>' : "") + `<button data-go="${esc(n.id)}"${n.id === state.focus ? ' aria-current="page"' : ""}>${esc(n.label)}</button>`).join("");
+  document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => focusNode(b.dataset.go)));
+  // the command bar
+  const cmdId = cmdOf(state.focus);                     // the bar follows where you are, never a command you left
+  const cmdEl = document.getElementById("cmd"), copy = document.getElementById("copy");
+  const effects = document.getElementById("effects"), warn = document.getElementById("warn"), impact = document.getElementById("impact");
+  if (!cmdId) {
+    const words = commonWords(state.focus);
+    cmdEl.innerHTML = `<span class="w">crewctl</span>${words.map(w => ` <span class="w">${esc(w)}</span>`).join("")} <span class="m">…</span>`;
+    const kept = Object.keys(state.values).filter(k => Object.keys(state.values[k]).length).length;
+    effects.innerHTML = esc(nodes[state.focus].type === "root" ? "Pick a job, then a command. The command line builds itself here." :
+      (nodes[state.focus].meta || "Pick a command.")) +
+      (kept ? ` &nbsp;·&nbsp; <span class="kept">Choices you made in ${kept} other command${kept > 1 ? "s are" : " is"} kept: open ${kept > 1 ? "them" : "it"} again to see them.</span>` : "");
+    effects.title = effects.textContent;
+    impact.innerHTML = ""; warn.textContent = ""; copy.disabled = true; document.getElementById("clear").disabled = true;
+    fitBar();
+    return;
+  }
+  const c = commandsById[cmdId], values = valuesFor(cmdId);
+  const tokens = buildTokens(c, values, DATA.globals, state.globals);
+  const groups = [];
+  for (const t of tokens) {
+    const last = groups[groups.length - 1];
+    const joins = last && t.k === "v" && last.d === t.d && last.g === t.g && last.i === t.i && last.tokens[last.tokens.length - 1].k === "o";
+    if (joins) last.tokens.push(t); else groups.push({d: t.d, g: t.g, i: t.i, missing: t.k === "m", tokens: [t]});
+  }
+  cmdEl.innerHTML = '<span class="w">crewctl</span> ' + groups.map(group => {
+    const inner = group.tokens.map(t => `<span class="${t.k}">${esc(t.k === "m" ? t.t : shellQuote(t.t))}</span>`).join(" ");
+    if (!group.d) return inner;
+    const key = (group.g ? "@" : "") + group.d, text = group.tokens.map(t => t.t).join(" ");
+    const remove = group.missing ? "" : `<span class="x" role="button" tabindex="0" data-remove aria-label="Remove ${esc(text)}" title="Remove"></span>`;
+    return `<span class="chip${group.missing ? " missing" : ""}${text.length > 48 ? " long" : ""}" data-key="${esc(key)}" data-item="${group.i ?? ""}"` +
+      ` title="${group.missing ? "Fill this in" : "Click to edit"}">${inner}${remove}</span>`;
+  }).join(" ");
+  cmdEl.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", e => {
+      if (e.target.closest("[data-remove]")) removeOption(cmdId, chip.dataset.key, chip.dataset.item);
+      else editOption(cmdId, chip.dataset.key);
+    });
+    const x = chip.querySelector("[data-remove]");
+    if (x) x.addEventListener("keydown", e => {                       // a span acting as a button: Enter and Space press it
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); removeOption(cmdId, chip.dataset.key, chip.dataset.item); }
+    });
+  });
+  document.getElementById("clear").disabled = !Object.keys(values).length && !Object.keys(state.globals).length;
+  impact.innerHTML = impactBadge(c.impact);
+  const chosen = c.args.filter(a => values[a.dest] !== undefined && !a.positional)
+    .map(a => `<b>${esc(a.flags[a.flags.length - 1])}</b>: ${esc(a.effect || a.help)}`);
+  effects.innerHTML = `<b>${esc(c.path.join(" "))}</b>: ${esc(c.effect)}` + (chosen.length ? " &nbsp;·&nbsp; " + chosen.join(" &nbsp;·&nbsp; ") : "");
+  effects.title = effects.textContent;                            // the full text, when two lines are not enough
+  const missing = tokens.filter(t => t.k === "m").map(t => t.t);
+  warn.textContent = missing.length ? "Still to fill in: " + missing.join(", ") : "";
+  copy.disabled = false;
+  copy.dataset.text = commandLine(tokens);
+  fitBar();
+}
+// Clicking a chip focuses the option's node and its input.
+function editOption(cmdId, key) {
+  const node = optionNode(cmdId, key);
+  if (!node) return;
+  focusNode(node.global ? cmdId + "|@globals" : cmdId);
+  setTimeout(() => {
+    const el = els[node.id], target = el.querySelector("input, .toggle, [data-choice]");
+    if (target) target.focus();
+    el.querySelector(".pill").classList.add("flash");
+    setTimeout(() => el.querySelector(".pill").classList.remove("flash"), 900);
+  }, 480);
+}
+// Grow (or shrink) the glass panel to the wrapped command, smoothly; the map re-centres above it.
+let barHeight = 0;
+function fitBar() {
+  const grow = document.getElementById("grow"), box = document.getElementById("cmd");
+  grow.style.height = box.offsetHeight + "px";                 // the text's own height, capped by its max-height
+  const h = document.getElementById("bar").offsetHeight;
+  if (Math.abs(h - barHeight) > 2) { barHeight = h; layout(); }
+}
+
+// hints ---------------------------------------------------------------------------------------------------------
+const popover = document.getElementById("popover");
+let hintFor = null;
+function openHint(node, button) {
+  if (hintFor === node.id) { closeHint(); return; }
+  closeHint();
+  hintFor = node.id;
+  button.setAttribute("aria-expanded", "true");
+  const arg = node.arg;
+  const lines = [`<h3>${esc(flagLabel(arg))}</h3>`];
+  if (arg.help) lines.push(`<p>${esc(arg.help)}</p>`);
+  if (arg.effect && arg.effect !== arg.help) lines.push(`<p class="effect">${esc(arg.effect)}</p>`);
+  if (arg.choices.length) lines.push(`<p>One of: ${arg.choices.map(esc).join(", ")}</p>`);
+  if (arg.kind === "multi") lines.push(`<p>Several values: separate them with commas or spaces.</p>`);
+  if (arg.required) lines.push(`<p><b>Required.</b></p>`);
+  if (node.global) lines.push(`<p>A global option: it goes before the command and applies to every command.</p>`);
+  document.getElementById("popbody").innerHTML = lines.join("");
+  popover.classList.add("open");
+  const box = button.closest(".pill").getBoundingClientRect(), s = stage.getBoundingClientRect();
+  const left = Math.min(Math.max(8, box.left - s.left + box.width / 2 - 150), s.width - 308);
+  const below = box.top - s.top + box.height / 2 < s.height / 2;
+  popover.style.left = left + "px";
+  popover.style.top = (below ? box.bottom - s.top + 12 : Math.max(8, box.top - s.top - popover.offsetHeight - 22)) + "px";
+}
+function closeHint() {
+  if (!hintFor) return;
+  const btn = els[hintFor] && els[hintFor].querySelector(".hint-btn");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+  hintFor = null;
+  popover.classList.remove("open");
+}
+popover.querySelector(".close").addEventListener("click", closeHint);
+document.addEventListener("click", e => { if (hintFor && !popover.contains(e.target) && !e.target.classList.contains("hint-btn")) closeHint(); });
+
+// search --------------------------------------------------------------------------------------------------------
+const q = document.getElementById("q"), results = document.getElementById("results");
+new ResizeObserver(() => fitBar()).observe(document.getElementById("cmd"));
+let active = 0, found = [];
+function search(text) {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return Object.values(commandsById).map(c => {
+    const hay = (c.path.join(" ") + " " + c.words + " " + c.effect).toLowerCase();
+    const score = words.reduce((s, w) => s + (c.path.join(" ").includes(w) ? 3 : hay.includes(w) ? 1 : 0), 0);
+    return {c, score};
+  }).filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, 8);
+}
+function showResults() {
+  found = search(q.value); active = 0;
+  results.innerHTML = found.map((r, i) => `<button data-i="${i}" class="${i === active ? "active" : ""}"><b>crewctl ${esc(r.c.path.join(" "))}</b><span>${esc(r.c.effect)}</span></button>`).join("");
+  results.classList.toggle("open", found.length > 0);
+  results.querySelectorAll("button").forEach(b => b.addEventListener("click", () => pick(+b.dataset.i)));
+}
+function pick(i) { const r = found[i]; if (!r) return; results.classList.remove("open"); q.value = ""; q.blur(); focusNode("c:" + r.c.path.join(" ")); }
+q.addEventListener("input", showResults);
+q.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); active = (active + (e.key === "ArrowDown" ? 1 : found.length - 1)) % Math.max(found.length, 1);
+    results.querySelectorAll("button").forEach((b, i) => b.classList.toggle("active", i === active));
+  } else if (e.key === "Enter") pick(active);
+  else if (e.key === "Escape") { e.stopPropagation(); results.classList.remove("open"); q.blur(); }   // closes the search only, never navigates
+});
+
+// theme, copy, keys, reset, deep links ----------------------------------------------------------------------------
+function setTheme(mode) {
+  if (mode === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", mode);
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeSet === mode)));
+  try { localStorage.setItem("crewctl-map-theme", mode); } catch (e) {}
+}
+document.querySelectorAll("[data-theme-set]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
+const copy = document.getElementById("copy");
+copy.addEventListener("click", async () => {
+  const text = copy.dataset.text || "";
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch (e2) {} ta.remove();
+  }
+  copy.textContent = ok ? "Copied ✓" : "Select & copy"; copy.classList.toggle("done", ok);
+  setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("done"); }, 1600);
+});
+document.addEventListener("keydown", e => {
+  const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if (e.key === "Escape") {                     // one press: close the hint if one is open, otherwise go back (leaving any box)
+    if (hintFor) closeHint();
+    else { if (typing) document.activeElement.blur(); goBack(); }
+  }
+  else if (e.key === "/" && !typing) { e.preventDefault(); q.focus(); }
+  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y" && !typing) { e.preventDefault(); redo(); }
+  else if (e.key === "Backspace" && !typing) { e.preventDefault(); removeLast(); }
+});
+document.getElementById("reset").addEventListener("click", () => {
+  remember(null);
+  state.values = {}; state.globals = {}; Object.keys(order).forEach(k => delete order[k]);
+  Object.keys(nodes).forEach(refreshNode); state.trail = []; focusNode("root", true);
+  toast("Everything cleared");
+});
+document.getElementById("clear").addEventListener("click", clearCommand);
+function saveHash() {
+  const params = new URLSearchParams();
+  params.set("at", state.focus);
+  const cmdId = cmdOf(state.focus);
+  if (cmdId) for (const [k, v] of Object.entries(valuesFor(cmdId))) params.set("v." + k, v === true ? "1" : v);
+  for (const [k, v] of Object.entries(state.globals)) params.set("g." + k, v === true ? "1" : v);
+  history.replaceState(null, "", "#" + params.toString());
+}
+function loadHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const at = params.get("at");
+  if (!at || !nodes[at]) return;
+  const cmdId = cmdOf(at);
+  for (const [k, v] of params) {
+    if (k.startsWith("v.") && cmdId) {
+      const arg = commandsById[cmdId].args.find(a => a.dest === k.slice(2));
+      if (arg) valuesFor(cmdId)[arg.dest] = arg.kind === "flag" ? v === "1" : v;
+    } else if (k.startsWith("g.")) {
+      const arg = DATA.globals.find(a => a.dest === k.slice(2));
+      if (arg) state.globals[arg.dest] = arg.kind === "flag" ? v === "1" : v;
+    }
+  }
+  state.focus = at;
+  if (cmdId) {
+    order[cmdId] = Object.keys(valuesFor(cmdId)).concat(Object.keys(state.globals).map(k => "@" + k));   // Backspace removes the link's last value first
+  }
+}
+
+// start -------------------------------------------------------------------------------------------------------------
+document.getElementById("ver").textContent = "for crewctl " + DATA.version;
+buildTree();
+Object.values(nodes).forEach(makeNode);
+let saved = "auto";
+try { saved = localStorage.getItem("crewctl-map-theme") || "auto"; } catch (e) {}
+const forced = new URLSearchParams(location.hash.slice(1)).get("theme");
+setTheme(forced || saved);
+loadHash();
+Object.keys(nodes).forEach(refreshNode);
+layout(); render();
+window.addEventListener("resize", () => layout());
+window.addEventListener("hashchange", () => {                    // a link pasted into an open tab
+  state.values = {}; state.globals = {}; state.focus = "root"; state.trail = [];
+  Object.keys(order).forEach(k => delete order[k]); undoLog.undo = []; undoLog.redo = [];
+  const theme = new URLSearchParams(location.hash.slice(1)).get("theme");
+  if (theme) setTheme(theme);
+  loadHash(); Object.keys(nodes).forEach(refreshNode); closeHint(); layout(); render();
+});
+setTimeout(() => { document.getElementById("tip").style.opacity = "0.75"; }, 4000);
+</script>
+</body>
+</html>
